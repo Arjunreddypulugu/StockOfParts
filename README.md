@@ -19,8 +19,8 @@ A Streamlit application for entering and tracking inventory parts with barcode s
 
 1. Clone this repository:
 ```
-git clone https://github.com/yourusername/barcode-data-entry.git
-cd barcode-data-entry
+git clone https://github.com/Arjunreddypulugu/StockOfParts.git
+cd StockOfParts
 ```
 
 2. Install the required packages:
@@ -29,8 +29,20 @@ pip install -r requirements.txt
 ```
 
 3. Configure the database:
-   - The application is pre-configured to connect to the SQL Server database
-   - If needed, edit the `config.py` file to adjust database connection parameters
+   - Create a `config.py` file based on the provided `config_template.py`
+   - Update the database connection parameters in your `config.py` file
+   ```python
+   # Example config.py
+   DB_CONFIG = {
+       'driver': 'ODBC Driver 17 for SQL Server',
+       'server': 'your_server_name.database.windows.net',
+       'database': 'your_database_name',
+       'username': 'your_username',
+       'password': 'your_password'
+   }
+   
+   TABLE_NAME = 'StockOfParts'
+   ```
 
 ## Usage
 
