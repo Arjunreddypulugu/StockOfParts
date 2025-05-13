@@ -1,4 +1,3 @@
 libzbar0
-unixodbc
-unixodbc-dev
-python3-pyodbc 
+freetds-dev
+freetds-bin 

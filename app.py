@@ -1,7 +1,8 @@
 import streamlit as st
 import time
+import pandas as pd
 from barcode_scanner import scan_barcode
-from database import create_table_if_not_exists, count_sku_entries, insert_entry, PYODBC_AVAILABLE
+from database import create_table_if_not_exists, count_sku_entries, insert_entry, get_all_entries, SQLALCHEMY_AVAILABLE
 
 def main():
     # Page title and description
@@ -9,31 +10,13 @@ def main():
     st.subheader("Enter part information manually or scan barcodes")
     
     # Check if database functionality is available
-    if not PYODBC_AVAILABLE:
-        st.warning("Database functionality is disabled. This is a demo mode with local storage only.")
-        
+    db_available = create_table_if_not_exists()
+    
+    if not db_available:
+        st.warning("Database connection failed. Running in demo mode with local storage only.")
         # Initialize session state for local storage
         if 'entries' not in st.session_state:
             st.session_state.entries = []
-            
-        # Function to count SKUs in local storage
-        def local_count_sku(sku):
-            return sum(1 for entry in st.session_state.entries if entry['sku'] == sku)
-            
-        # Function to add entry to local storage
-        def local_add_entry(sku, manufacturer, part_number, nth_entry):
-            st.session_state.entries.append({
-                'sku': sku,
-                'manufacturer': manufacturer,
-                'manufacturer_part_number': part_number,
-                'nth_entry': nth_entry
-            })
-            return True
-    else:
-        # Ensure database table exists
-        create_table_if_not_exists()
-        local_count_sku = count_sku_entries
-        local_add_entry = insert_entry
     
     # Create form for data entry
     with st.form("data_entry_form"):
@@ -62,7 +45,13 @@ def main():
         
         # Display SKU count information
         if sku:
-            count = local_count_sku(sku)
+            if db_available:
+                # Get count from database
+                count = count_sku_entries(sku)
+            else:
+                # Count SKUs in local storage
+                count = sum(1 for entry in st.session_state.entries if entry['sku'] == sku)
+            
             if count > 0:
                 st.info(f"This SKU already exists {count} times in the database. This will be entry #{count + 1}.")
                 nth_entry = count + 1
@@ -79,8 +68,20 @@ def main():
             if not sku or not manufacturer or not part_number:
                 st.error("Please fill in all fields.")
             else:
-                # Insert data into database or local storage
-                success = local_add_entry(sku, manufacturer, part_number, nth_entry)
+                success = False
+                if db_available:
+                    # Insert into database
+                    success = insert_entry(sku, manufacturer, part_number, nth_entry)
+                else:
+                    # Add to local storage
+                    st.session_state.entries.append({
+                        'sku': sku,
+                        'manufacturer': manufacturer,
+                        'manufacturer_part_number': part_number,
+                        'nth_entry': nth_entry
+                    })
+                    success = True
+                
                 if success:
                     st.success("Data successfully saved!")
                     # Clear the form
@@ -92,14 +93,36 @@ def main():
                 else:
                     st.error("Failed to save data. Please try again.")
 
-    # Display local entries if database is not available
-    if not PYODBC_AVAILABLE and st.session_state.entries:
+    # Display entries
+    if db_available:
+        # Get entries from database
+        df = get_all_entries()
+        if not df.empty:
+            st.subheader("Database Entries")
+            st.dataframe(df)
+            
+            # Add a button to download as CSV
+            csv = df.to_csv(index=False)
+            st.download_button(
+                label="Download Data as CSV",
+                data=csv,
+                file_name="barcode_entries.csv",
+                mime="text/csv"
+            )
+    elif 'entries' in st.session_state and st.session_state.entries:
+        # Display local entries
         st.subheader("Saved Entries (Local Storage)")
-        
-        # Create a dataframe to display entries
-        import pandas as pd
         df = pd.DataFrame(st.session_state.entries)
         st.dataframe(df)
+        
+        # Add a button to download as CSV
+        csv = df.to_csv(index=False)
+        st.download_button(
+            label="Download Data as CSV",
+            data=csv,
+            file_name="barcode_entries.csv",
+            mime="text/csv"
+        )
         
         # Add a button to clear local storage
         if st.button("Clear Local Storage"):

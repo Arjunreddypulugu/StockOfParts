@@ -1,113 +1,139 @@
-try:
-    import pyodbc
-    PYODBC_AVAILABLE = True
-except ImportError:
-    PYODBC_AVAILABLE = False
-    import streamlit as st
+import streamlit as st
+import pandas as pd
 
-# Try to import from streamlit_config first, then fallback to config if available
+# Try to import SQLAlchemy
 try:
-    from streamlit_config import DB_CONFIG, TABLE_NAME
+    from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, inspect
+    from sqlalchemy.exc import SQLAlchemyError
+    SQLALCHEMY_AVAILABLE = True
+except ImportError:
+    SQLALCHEMY_AVAILABLE = False
+    st.warning("SQLAlchemy is not available. Running in demo mode with local storage only.")
+
+# Try to import from streamlit_config
+try:
+    from streamlit_config import CONNECTION_STRING, TABLE_NAME
 except ImportError:
     try:
-        from config import DB_CONFIG, TABLE_NAME
+        from config import CONNECTION_STRING, TABLE_NAME
     except ImportError:
-        import streamlit as st
         st.error("Neither streamlit_config.py nor config.py found. Database functionality will be disabled.")
-        PYODBC_AVAILABLE = False
-        # Define dummy values for DB_CONFIG and TABLE_NAME
-        DB_CONFIG = {}
+        SQLALCHEMY_AVAILABLE = False
+        # Define dummy values
+        CONNECTION_STRING = ""
         TABLE_NAME = "StockOfParts"
 
-def get_connection():
-    """Establish and return a database connection"""
-    if not PYODBC_AVAILABLE:
-        st.error("pyodbc is not available. Database functionality is disabled.")
+# Global engine variable
+engine = None
+
+def get_engine():
+    """Get or create SQLAlchemy engine"""
+    global engine
+    
+    if not SQLALCHEMY_AVAILABLE or not CONNECTION_STRING:
         return None
         
-    try:
-        conn_str = f"DRIVER={{{DB_CONFIG['driver']}}};" \
-                   f"SERVER={DB_CONFIG['server']};" \
-                   f"DATABASE={DB_CONFIG['database']};" \
-                   f"UID={DB_CONFIG['username']};" \
-                   f"PWD={DB_CONFIG['password']}"
-        conn = pyodbc.connect(conn_str)
-        return conn
-    except pyodbc.Error as err:
-        print(f"Error connecting to database: {err}")
-        return None
+    if engine is None:
+        try:
+            engine = create_engine(CONNECTION_STRING)
+        except SQLAlchemyError as e:
+            st.error(f"Error creating database engine: {e}")
+            return None
+    
+    return engine
 
 def create_table_if_not_exists():
     """Create the parts inventory table if it doesn't exist"""
-    if not PYODBC_AVAILABLE:
-        print("pyodbc is not available. Database functionality is disabled.")
-        return
+    if not SQLALCHEMY_AVAILABLE or not CONNECTION_STRING:
+        st.warning("Database functionality is disabled. Running in demo mode.")
+        return False
         
-    conn = get_connection()
-    if conn:
-        try:
-            cursor = conn.cursor()
-            # Check if table exists
-            cursor.execute(f"""
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '{TABLE_NAME}')
-            BEGIN
-                CREATE TABLE {TABLE_NAME} (
-                    id INT IDENTITY(1,1) PRIMARY KEY,
-                    SKU VARCHAR(255),
-                    manufacturer VARCHAR(255),
-                    manufacturer_part_number VARCHAR(255),
-                    nth_entry INT
+    engine = get_engine()
+    if not engine:
+        return False
+        
+    try:
+        # Check if table exists
+        with engine.connect() as conn:
+            inspector = inspect(engine)
+            if not inspector.has_table(TABLE_NAME):
+                # Create table
+                metadata = MetaData()
+                Table(
+                    TABLE_NAME, 
+                    metadata,
+                    Column('id', Integer, primary_key=True),
+                    Column('SKU', String(255)),
+                    Column('manufacturer', String(255)),
+                    Column('manufacturer_part_number', String(255)),
+                    Column('nth_entry', Integer)
                 )
-            END
-            """)
-            conn.commit()
-            print(f"Table {TABLE_NAME} is ready")
-        except pyodbc.Error as err:
-            print(f"Error creating table: {err}")
-        finally:
-            cursor.close()
-            conn.close()
+                metadata.create_all(engine)
+                st.success(f"Table {TABLE_NAME} created successfully")
+            return True
+    except SQLAlchemyError as e:
+        st.error(f"Error creating table: {e}")
+        return False
 
 def count_sku_entries(sku):
     """Count how many times a SKU appears in the database"""
-    if not PYODBC_AVAILABLE:
-        print("pyodbc is not available. Database functionality is disabled.")
+    if not SQLALCHEMY_AVAILABLE or not CONNECTION_STRING:
         return 0
         
-    conn = get_connection()
-    if conn:
-        try:
-            cursor = conn.cursor()
-            query = f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE SKU = ?"
-            cursor.execute(query, (sku,))
-            count = cursor.fetchone()[0]
-            return count
-        except pyodbc.Error as err:
-            print(f"Error counting SKU entries: {err}")
-            return 0
-        finally:
-            cursor.close()
-            conn.close()
-    return 0
+    engine = get_engine()
+    if not engine:
+        return 0
+        
+    try:
+        with engine.connect() as conn:
+            query = text(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE SKU = :sku")
+            result = conn.execute(query, {"sku": sku})
+            count = result.scalar()
+            return count if count else 0
+    except SQLAlchemyError as e:
+        st.error(f"Error counting SKU entries: {e}")
+        return 0
 
 def insert_entry(sku, manufacturer, manufacturer_part_number, nth_entry):
     """Insert a new entry into the database"""
-    if not PYODBC_AVAILABLE:
-        print("pyodbc is not available. Database functionality is disabled.")
+    if not SQLALCHEMY_AVAILABLE or not CONNECTION_STRING:
         return False
         
-    conn = get_connection()
-    if conn:
-        try:
-            cursor = conn.cursor()
-            query = f"INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, nth_entry) VALUES (?, ?, ?, ?)"
-            cursor.execute(query, (sku, manufacturer, manufacturer_part_number, nth_entry))
+    engine = get_engine()
+    if not engine:
+        return False
+        
+    try:
+        with engine.connect() as conn:
+            query = text(f"""
+                INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, nth_entry) 
+                VALUES (:sku, :manufacturer, :part_number, :nth_entry)
+            """)
+            conn.execute(query, {
+                "sku": sku, 
+                "manufacturer": manufacturer, 
+                "part_number": manufacturer_part_number, 
+                "nth_entry": nth_entry
+            })
             conn.commit()
             return True
-        except pyodbc.Error as err:
-            print(f"Error inserting entry: {err}")
-            return False
-        finally:
-            cursor.close()
-            conn.close()
-    return False 
+    except SQLAlchemyError as e:
+        st.error(f"Error inserting entry: {e}")
+        return False
+
+def get_all_entries():
+    """Get all entries from the database"""
+    if not SQLALCHEMY_AVAILABLE or not CONNECTION_STRING:
+        return pd.DataFrame()
+        
+    engine = get_engine()
+    if not engine:
+        return pd.DataFrame()
+        
+    try:
+        query = text(f"SELECT * FROM {TABLE_NAME}")
+        df = pd.read_sql(query, engine)
+        return df
+    except SQLAlchemyError as e:
+        st.error(f"Error getting entries: {e}")
+        return pd.DataFrame() 
