@@ -81,7 +81,7 @@ def insert_entry(sku, manufacturer, part_number):
         result = run_query(query, {"sku": sku})
         sku_exists = result[0]['count'] > 0 if result else False
         
-        # Set is_duplicate based on whether SKU exists
+        # If SKU exists, this is a duplicate entry
         is_duplicate = 'yes' if sku_exists else 'no'
         
         # Insert the new record
@@ -89,6 +89,16 @@ def insert_entry(sku, manufacturer, part_number):
         INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, is_duplicate) 
         VALUES (:sku, :manufacturer, :part_number, :is_duplicate)
         """
+        
+        # If this is a duplicate, also update all previous entries with same SKU to 'yes'
+        if sku_exists:
+            update_query = f"""
+            UPDATE {TABLE_NAME} 
+            SET is_duplicate = 'yes'
+            WHERE SKU = :sku
+            """
+            run_query(update_query, {"sku": sku})
+        
         return run_query(query, {
             "sku": sku,
             "manufacturer": manufacturer,
