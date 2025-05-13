@@ -78,10 +78,14 @@ def create_table():
 
 # Count SKU entries
 def count_sku_entries(sku):
-    query = f"SELECT COUNT(*) AS count FROM {TABLE_NAME} WHERE SKU = :sku"
+    query = f"""
+    SELECT COALESCE(MAX(nth_entry), 0) as max_entry 
+    FROM {TABLE_NAME} 
+    WHERE SKU = :sku
+    """
     result = run_query(query, {"sku": sku})
     if result:
-        return result[0]['count']
+        return result[0]['max_entry']
     return 0
 
 # Insert new entry
@@ -126,10 +130,10 @@ with st.form("data_entry_form"):
     
     # Display SKU count information
     if sku:
-        count = count_sku_entries(sku)
-        if count > 0:
-            st.info(f"This SKU already exists {count} times in the database. This will be entry #{count + 1}.")
-            nth_entry = count + 1
+        current_max = count_sku_entries(sku)
+        if current_max > 0:
+            st.info(f"This SKU already exists {current_max} times in the database. This will be entry #{current_max + 1}.")
+            nth_entry = current_max + 1
         else:
             st.success("This is a new SKU.")
             nth_entry = 1
@@ -143,6 +147,10 @@ with st.form("data_entry_form"):
         if not sku or not manufacturer or not part_number:
             st.error("Please fill in all fields.")
         else:
+            # Recheck the count right before inserting to ensure accuracy
+            current_max = count_sku_entries(sku)
+            nth_entry = current_max + 1
+            
             success = insert_entry(sku, manufacturer, part_number, nth_entry)
             if success:
                 st.success("Data successfully saved to the database!")
