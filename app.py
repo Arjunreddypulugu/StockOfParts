@@ -63,7 +63,6 @@ def create_table():
     IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '{TABLE_NAME}')
     BEGIN
         CREATE TABLE {TABLE_NAME} (
-            id INT IDENTITY(1,1) PRIMARY KEY,
             SKU VARCHAR(255),
             manufacturer VARCHAR(255),
             manufacturer_part_number VARCHAR(255),
@@ -96,7 +95,7 @@ def insert_entry(sku, manufacturer, part_number, nth_entry):
 
 # Get all entries
 def get_all_entries():
-    query = f"SELECT * FROM {TABLE_NAME} ORDER BY id DESC"
+    query = f"SELECT * FROM {TABLE_NAME} ORDER BY nth_entry DESC, SKU"
     result = run_query(query)
     if result:
         return pd.DataFrame(result)
