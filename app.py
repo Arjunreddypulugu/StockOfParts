@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import time
-import pyodbc
+import pymssql
 
 # Database configuration
 @st.cache_resource
@@ -13,11 +13,13 @@ def get_connection():
         username = st.secrets["db_username"]
         password = st.secrets["db_password"]
         
-        # Create connection string
-        conn_str = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password}"
-        
-        # Connect to database
-        conn = pyodbc.connect(conn_str)
+        # Connect to database using pymssql
+        conn = pymssql.connect(
+            server=server,
+            database=database,
+            user=username,
+            password=password
+        )
         return conn
     except Exception as e:
         st.error(f"Error connecting to database: {str(e)}")
@@ -59,7 +61,7 @@ def count_sku_entries(sku):
     if conn:
         try:
             cursor = conn.cursor()
-            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE SKU = ?", (sku,))
+            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NAME} WHERE SKU = %s", (sku,))
             count = cursor.fetchone()[0]
             cursor.close()
             return count
@@ -74,7 +76,7 @@ def insert_entry(sku, manufacturer, part_number, nth_entry):
         try:
             cursor = conn.cursor()
             cursor.execute(
-                f"INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, nth_entry) VALUES (?, ?, ?, ?)",
+                f"INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, nth_entry) VALUES (%s, %s, %s, %s)",
                 (sku, manufacturer, part_number, nth_entry)
             )
             conn.commit()
@@ -89,9 +91,11 @@ def get_all_entries():
     conn = get_connection()
     if conn:
         try:
-            query = f"SELECT * FROM {TABLE_NAME}"
-            df = pd.read_sql(query, conn)
-            return df
+            cursor = conn.cursor(as_dict=True)
+            cursor.execute(f"SELECT * FROM {TABLE_NAME}")
+            rows = cursor.fetchall()
+            cursor.close()
+            return pd.DataFrame(rows)
         except Exception as e:
             st.error(f"Error getting entries: {str(e)}")
             return pd.DataFrame()
