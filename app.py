@@ -73,52 +73,35 @@ def create_table():
     """
     return run_query(query)
 
-# Get next nth_entry value for a SKU
-def get_next_nth_entry(sku):
-    query = f"""
-    SELECT COUNT(*) as entry_count
-    FROM {TABLE_NAME} WITH (NOLOCK)
-    WHERE SKU = :sku
-    """
-    try:
-        result = run_query(query, {"sku": sku})
-        if result and result[0]:
-            count = int(result[0]['entry_count'])
-            return count + 1
-        return 1
-    except Exception as e:
-        st.error(f"Error getting next nth_entry: {str(e)}")
-        return 1
-
 # Insert new entry
 def insert_entry(sku, manufacturer, part_number):
     try:
-        # Get the next nth_entry value
-        next_entry = get_next_nth_entry(sku)
+        # First, check if SKU exists and count occurrences
+        query = f"SELECT COUNT(*) as count FROM {TABLE_NAME} WHERE SKU = :sku"
+        result = run_query(query, {"sku": sku})
+        count = result[0]['count'] if result else 0
+        
+        # For new entry, nth_entry will be count + 1
+        nth_entry = count + 1
         
         # Insert the new record
         query = f"""
         INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, nth_entry) 
         VALUES (:sku, :manufacturer, :part_number, :nth_entry)
         """
-        params = {
+        return run_query(query, {
             "sku": sku,
             "manufacturer": manufacturer,
             "part_number": part_number,
-            "nth_entry": next_entry
-        }
-        return run_query(query, params)
+            "nth_entry": nth_entry
+        })
     except Exception as e:
         st.error(f"Error inserting entry: {str(e)}")
         return False
 
 # Get all entries
 def get_all_entries():
-    query = f"""
-    SELECT SKU, manufacturer, manufacturer_part_number, nth_entry 
-    FROM {TABLE_NAME} WITH (NOLOCK)
-    ORDER BY SKU, nth_entry DESC
-    """
+    query = f"SELECT * FROM {TABLE_NAME} ORDER BY SKU, nth_entry DESC"
     try:
         result = run_query(query)
         if result:
