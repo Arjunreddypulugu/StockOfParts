@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
-import pymssql
+from sqlalchemy import create_engine, text
+from urllib.parse import quote_plus
 
 # Display app header
 st.title("Barcode Data Entry System")
@@ -10,12 +11,18 @@ st.subheader("Enter part information manually")
 @st.cache_resource
 def init_connection():
     try:
-        return pymssql.connect(
-            server="vdrsapps.database.windows.net",  # Full server name
-            database=st.secrets["database"]["db_database"],
-            user=st.secrets["database"]["db_username"],  # Just the username
-            password=st.secrets["database"]["db_password"]
-        )
+        # Create SQLAlchemy connection string
+        password = quote_plus(st.secrets["database"]["db_password"])  # URL encode the password
+        conn_str = f"mssql+pymssql://VDRSAdmin:{password}@vdrsapps.database.windows.net/{st.secrets['database']['db_database']}"
+        
+        # Create engine
+        engine = create_engine(conn_str)
+        
+        # Test connection
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            
+        return engine
     except Exception as e:
         st.error(f"Database connection error: {str(e)}")
         st.info("Please verify:\n1. Database credentials\n2. Server name format\n3. Firewall rules")
@@ -30,19 +37,19 @@ except:
 # Perform query
 @st.cache_data(ttl=600)
 def run_query(query, params=None):
-    conn = init_connection()
-    if not conn:
+    engine = init_connection()
+    if not engine:
         return None
     
     try:
-        with conn.cursor(as_dict=True) as cursor:
+        with engine.connect() as conn:
             if params:
-                cursor.execute(query, params)
+                result = conn.execute(text(query), params)
             else:
-                cursor.execute(query)
+                result = conn.execute(text(query))
             
             if query.strip().upper().startswith("SELECT"):
-                return cursor.fetchall()
+                return [dict(row) for row in result]
             else:
                 conn.commit()
                 return True
@@ -68,8 +75,8 @@ def create_table():
 
 # Count SKU entries
 def count_sku_entries(sku):
-    query = f"SELECT COUNT(*) AS count FROM {TABLE_NAME} WHERE SKU = %s"
-    result = run_query(query, (sku,))
+    query = f"SELECT COUNT(*) AS count FROM {TABLE_NAME} WHERE SKU = :sku"
+    result = run_query(query, {"sku": sku})
     if result:
         return result[0]['count']
     return 0
@@ -78,9 +85,14 @@ def count_sku_entries(sku):
 def insert_entry(sku, manufacturer, part_number, nth_entry):
     query = f"""
     INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, nth_entry) 
-    VALUES (%s, %s, %s, %s)
+    VALUES (:sku, :manufacturer, :part_number, :nth_entry)
     """
-    return run_query(query, (sku, manufacturer, part_number, nth_entry))
+    return run_query(query, {
+        "sku": sku,
+        "manufacturer": manufacturer,
+        "part_number": part_number,
+        "nth_entry": nth_entry
+    })
 
 # Get all entries
 def get_all_entries():
