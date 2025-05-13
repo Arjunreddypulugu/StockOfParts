@@ -67,7 +67,7 @@ def create_table():
             SKU VARCHAR(255),
             manufacturer VARCHAR(255),
             manufacturer_part_number VARCHAR(255),
-            nth_entry VARCHAR(255)
+            is_duplicate VARCHAR(255)
         )
     END
     """
@@ -76,24 +76,24 @@ def create_table():
 # Insert new entry
 def insert_entry(sku, manufacturer, part_number):
     try:
-        # First, check if SKU exists and count occurrences
+        # First, check if SKU exists
         query = f"SELECT COUNT(*) as count FROM {TABLE_NAME} WHERE SKU = :sku"
         result = run_query(query, {"sku": sku})
-        count = result[0]['count'] if result else 0
+        sku_exists = result[0]['count'] > 0 if result else False
         
-        # For new entry, nth_entry will be count + 1 (as string)
-        nth_entry = str(count + 1)
+        # Set is_duplicate based on whether SKU exists
+        is_duplicate = 'yes' if sku_exists else 'no'
         
         # Insert the new record
         query = f"""
-        INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, nth_entry) 
-        VALUES (:sku, :manufacturer, :part_number, :nth_entry)
+        INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, is_duplicate) 
+        VALUES (:sku, :manufacturer, :part_number, :is_duplicate)
         """
         return run_query(query, {
             "sku": sku,
             "manufacturer": manufacturer,
             "part_number": part_number,
-            "nth_entry": nth_entry
+            "is_duplicate": is_duplicate
         })
     except Exception as e:
         st.error(f"Error inserting entry: {str(e)}")
