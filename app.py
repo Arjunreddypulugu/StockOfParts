@@ -29,7 +29,6 @@ def init_connection():
         return engine
     except Exception as e:
         st.error(f"Database connection error: {str(e)}")
-        st.info("Please verify:\n1. Database credentials\n2. Server name format\n3. Firewall rules")
         return None
 
 # Get table name from secrets
@@ -78,24 +77,17 @@ def create_table():
 # Count SKU entries
 def count_sku_entries(sku):
     query = f"""
-    SELECT COUNT(*) as count 
-    FROM {TABLE_NAME} 
+    SELECT COUNT(1) as entry_count 
+    FROM {TABLE_NAME} WITH (NOLOCK)
     WHERE SKU = :sku
     """
     result = run_query(query, {"sku": sku})
-    if result:
-        count = result[0]['count']
-        st.write(f"Debug: Found {count} existing entries for SKU {sku}")  # Debug message
-        return count
-    return 0
+    return result[0]['entry_count'] if result else 0
 
 # Insert new entry
-def insert_entry(sku, manufacturer, part_number, nth_entry):
-    # Double check the count before inserting
-    current_count = count_sku_entries(sku)
-    if current_count > 0:
-        nth_entry = current_count + 1
-        st.write(f"Debug: Setting nth_entry to {nth_entry} for SKU {sku}")  # Debug message
+def insert_entry(sku, manufacturer, part_number):
+    # Get current count and add 1 for new entry
+    nth_entry = count_sku_entries(sku) + 1
     
     query = f"""
     INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, nth_entry) 
@@ -135,16 +127,6 @@ with st.form("data_entry_form"):
     # Manufacturer part number input
     part_number = st.text_input("Manufacturer Part Number (e.g., L24DF3)", key="part_number_input", value="")
     
-    # Display SKU count information
-    nth_entry = 1
-    if sku:
-        current_count = count_sku_entries(sku)
-        if current_count > 0:
-            st.info(f"This SKU already exists {current_count} times in the database. This will be entry #{current_count + 1}.")
-            nth_entry = current_count + 1
-        else:
-            st.success("This is a new SKU.")
-    
     # Submit button
     submit_button = st.form_submit_button("Submit")
     
@@ -152,14 +134,11 @@ with st.form("data_entry_form"):
         if not sku or not manufacturer or not part_number:
             st.error("Please fill in all fields.")
         else:
-            success = insert_entry(sku, manufacturer, part_number, nth_entry)
+            success = insert_entry(sku, manufacturer, part_number)
             if success:
-                st.success("Data successfully saved to the database!")
-                # Set the success flag
+                st.success("Data saved successfully!")
                 st.session_state.form_submitted = True
                 st.rerun()
-            else:
-                st.error("Failed to save data to the database. Please try again.")
 
 # Display entries
 df = get_all_entries()
