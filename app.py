@@ -45,18 +45,18 @@ def run_query(query, params=None):
     
     try:
         with engine.connect() as conn:
-            if params:
-                result = conn.execute(text(query), params)
-            else:
-                result = conn.execute(text(query))
+            result = conn.execute(text(query), params if params else {})
+            conn.commit()
             
             if query.strip().upper().startswith("SELECT"):
-                return [dict(row) for row in result]
-            else:
-                conn.commit()
-                return True
+                # Properly handle row results
+                columns = result.keys()
+                rows = [dict(zip(columns, row)) for row in result.fetchall()]
+                return rows
+            return True
+            
     except Exception as e:
-        st.error(f"Query error: {e}")
+        st.error(f"Query error: {str(e)}")
         return None
 
 # Create table if it doesn't exist
@@ -77,36 +77,54 @@ def create_table():
 # Count SKU entries
 def count_sku_entries(sku):
     query = f"""
-    SELECT COUNT(1) as entry_count 
+    SELECT ISNULL(MAX(nth_entry), 0) as max_entry
     FROM {TABLE_NAME} WITH (NOLOCK)
     WHERE SKU = :sku
     """
-    result = run_query(query, {"sku": sku})
-    return result[0]['entry_count'] if result else 0
+    try:
+        result = run_query(query, {"sku": sku})
+        if result and result[0]:
+            return int(result[0]['max_entry'])
+        return 0
+    except Exception as e:
+        st.error(f"Error counting SKU entries: {str(e)}")
+        return 0
 
 # Insert new entry
 def insert_entry(sku, manufacturer, part_number):
-    # Get current count and add 1 for new entry
-    nth_entry = count_sku_entries(sku) + 1
-    
-    query = f"""
-    INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, nth_entry) 
-    VALUES (:sku, :manufacturer, :part_number, :nth_entry)
-    """
-    return run_query(query, {
-        "sku": sku,
-        "manufacturer": manufacturer,
-        "part_number": part_number,
-        "nth_entry": nth_entry
-    })
+    try:
+        # Get current max entry number and add 1
+        next_entry = count_sku_entries(sku) + 1
+        
+        query = f"""
+        INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, nth_entry) 
+        VALUES (:sku, :manufacturer, :part_number, :nth_entry)
+        """
+        return run_query(query, {
+            "sku": sku,
+            "manufacturer": manufacturer,
+            "part_number": part_number,
+            "nth_entry": next_entry
+        })
+    except Exception as e:
+        st.error(f"Error inserting entry: {str(e)}")
+        return False
 
 # Get all entries
 def get_all_entries():
-    query = f"SELECT * FROM {TABLE_NAME} ORDER BY nth_entry DESC, SKU"
-    result = run_query(query)
-    if result:
-        return pd.DataFrame(result)
-    return pd.DataFrame()
+    query = f"""
+    SELECT SKU, manufacturer, manufacturer_part_number, nth_entry 
+    FROM {TABLE_NAME} WITH (NOLOCK)
+    ORDER BY SKU, nth_entry DESC
+    """
+    try:
+        result = run_query(query)
+        if result:
+            return pd.DataFrame(result)
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Error getting entries: {str(e)}")
+        return pd.DataFrame()
 
 # Create the table if it doesn't exist
 create_table()
@@ -134,8 +152,7 @@ with st.form("data_entry_form"):
         if not sku or not manufacturer or not part_number:
             st.error("Please fill in all fields.")
         else:
-            success = insert_entry(sku, manufacturer, part_number)
-            if success:
+            if insert_entry(sku, manufacturer, part_number):
                 st.success("Data saved successfully!")
                 st.session_state.form_submitted = True
                 st.rerun()
