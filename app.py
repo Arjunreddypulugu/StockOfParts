@@ -7,6 +7,10 @@ from urllib.parse import quote_plus
 st.title("Barcode Data Entry System")
 st.subheader("Enter part information manually")
 
+# Initialize success flag in session state if not present
+if 'form_submitted' not in st.session_state:
+    st.session_state.form_submitted = False
+
 # Initialize connection
 @st.cache_resource
 def init_connection():
@@ -104,16 +108,21 @@ def get_all_entries():
 # Create the table if it doesn't exist
 create_table()
 
+# If form was just submitted successfully, clear the session state
+if st.session_state.form_submitted:
+    st.session_state.form_submitted = False
+    st.rerun()
+
 # Create form for data entry
 with st.form("data_entry_form"):
     # SKU input
-    sku = st.text_input("SKU (e.g., 999.000.932)", key="sku_input")
+    sku = st.text_input("SKU (e.g., 999.000.932)", key="sku_input", value="")
     
     # Manufacturer input
-    manufacturer = st.text_input("Manufacturer (e.g., Siemens, Schneider, Pils)", key="manufacturer_input")
+    manufacturer = st.text_input("Manufacturer (e.g., Siemens, Schneider, Pils)", key="manufacturer_input", value="")
     
     # Manufacturer part number input
-    part_number = st.text_input("Manufacturer Part Number (e.g., L24DF3)", key="part_number_input")
+    part_number = st.text_input("Manufacturer Part Number (e.g., L24DF3)", key="part_number_input", value="")
     
     # Display SKU count information
     if sku:
@@ -137,10 +146,8 @@ with st.form("data_entry_form"):
             success = insert_entry(sku, manufacturer, part_number, nth_entry)
             if success:
                 st.success("Data successfully saved to the database!")
-                # Clear the form
-                st.session_state.sku_input = ""
-                st.session_state.manufacturer_input = ""
-                st.session_state.part_number_input = ""
+                # Set the success flag
+                st.session_state.form_submitted = True
                 st.rerun()
             else:
                 st.error("Failed to save data to the database. Please try again.")
