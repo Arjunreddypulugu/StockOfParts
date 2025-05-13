@@ -76,30 +76,17 @@ def create_table():
 # Insert new entry
 def insert_entry(sku, manufacturer, part_number):
     try:
-        # First, check if SKU exists
-        query = f"SELECT COUNT(*) as count FROM {TABLE_NAME} WHERE SKU = :sku"
-        result = run_query(query, {"sku": sku})
-        sku_exists = result[0]['count'] > 0 if result else False
-        
-        # If SKU exists, this is a duplicate entry
-        is_duplicate = 'yes' if sku_exists else 'no'
+        # Check if SKU exists before inserting
+        check_query = f"SELECT COUNT(*) as count FROM {TABLE_NAME} WHERE SKU = :sku"
+        result = run_query(check_query, {"sku": sku})
+        is_duplicate = 'yes' if result and result[0]['count'] > 0 else 'no'
         
         # Insert the new record
-        query = f"""
+        insert_query = f"""
         INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, is_duplicate) 
         VALUES (:sku, :manufacturer, :part_number, :is_duplicate)
         """
-        
-        # If this is a duplicate, also update all previous entries with same SKU to 'yes'
-        if sku_exists:
-            update_query = f"""
-            UPDATE {TABLE_NAME} 
-            SET is_duplicate = 'yes'
-            WHERE SKU = :sku
-            """
-            run_query(update_query, {"sku": sku})
-        
-        return run_query(query, {
+        return run_query(insert_query, {
             "sku": sku,
             "manufacturer": manufacturer,
             "part_number": part_number,
