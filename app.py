@@ -49,7 +49,6 @@ def run_query(query, params=None):
             conn.commit()
             
             if query.strip().upper().startswith("SELECT"):
-                # Properly handle row results
                 columns = result.keys()
                 rows = [dict(zip(columns, row)) for row in result.fetchall()]
                 return rows
@@ -74,38 +73,41 @@ def create_table():
     """
     return run_query(query)
 
-# Count SKU entries
-def count_sku_entries(sku):
+# Get next nth_entry value for a SKU
+def get_next_nth_entry(sku):
     query = f"""
-    SELECT ISNULL(MAX(nth_entry), 0) as max_entry
+    SELECT COUNT(*) as entry_count
     FROM {TABLE_NAME} WITH (NOLOCK)
     WHERE SKU = :sku
     """
     try:
         result = run_query(query, {"sku": sku})
         if result and result[0]:
-            return int(result[0]['max_entry'])
-        return 0
+            count = int(result[0]['entry_count'])
+            return count + 1
+        return 1
     except Exception as e:
-        st.error(f"Error counting SKU entries: {str(e)}")
-        return 0
+        st.error(f"Error getting next nth_entry: {str(e)}")
+        return 1
 
 # Insert new entry
 def insert_entry(sku, manufacturer, part_number):
     try:
-        # Get current max entry number and add 1
-        next_entry = count_sku_entries(sku) + 1
+        # Get the next nth_entry value
+        next_entry = get_next_nth_entry(sku)
         
+        # Insert the new record
         query = f"""
         INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, nth_entry) 
         VALUES (:sku, :manufacturer, :part_number, :nth_entry)
         """
-        return run_query(query, {
+        params = {
             "sku": sku,
             "manufacturer": manufacturer,
             "part_number": part_number,
             "nth_entry": next_entry
-        })
+        }
+        return run_query(query, params)
     except Exception as e:
         st.error(f"Error inserting entry: {str(e)}")
         return False
