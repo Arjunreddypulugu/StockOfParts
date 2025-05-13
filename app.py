@@ -67,7 +67,7 @@ def create_table():
             SKU VARCHAR(255),
             manufacturer VARCHAR(255),
             manufacturer_part_number VARCHAR(255),
-            nth_entry INT
+            nth_entry VARCHAR(255)
         )
     END
     """
@@ -81,8 +81,8 @@ def insert_entry(sku, manufacturer, part_number):
         result = run_query(query, {"sku": sku})
         count = result[0]['count'] if result else 0
         
-        # For new entry, nth_entry will be count + 1
-        nth_entry = count + 1
+        # For new entry, nth_entry will be count + 1 (as string)
+        nth_entry = str(count + 1)
         
         # Insert the new record
         query = f"""
