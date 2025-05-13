@@ -11,18 +11,18 @@ st.subheader("Enter part information manually")
 def init_connection():
     try:
         return pymssql.connect(
-            server=st.secrets["db_server"],
-            database=st.secrets["db_database"],
-            user=st.secrets["db_username"],
-            password=st.secrets["db_password"]
+            server=st.secrets["database"]["db_server"],
+            database=st.secrets["database"]["db_database"],
+            user=st.secrets["database"]["db_username"],
+            password=st.secrets["database"]["db_password"]
         )
     except Exception as e:
-        st.error(f"Database connection error: {e}")
+        st.error(f"Database connection error: {str(e)}")
         return None
 
 # Get table name from secrets
 try:
-    TABLE_NAME = st.secrets["db_table"]
+    TABLE_NAME = st.secrets["database"]["db_table"]
 except:
     TABLE_NAME = "StockOfParts"
 
