@@ -10,21 +10,15 @@ st.subheader("Enter part information manually")
 @st.cache_resource
 def init_connection():
     try:
-        # Format server name for Azure SQL
-        server = st.secrets["database"]["db_server"]
-        if not server.endswith('.database.windows.net'):
-            server = f"{server}.database.windows.net"
-            
         return pymssql.connect(
-            server=server,
+            server="vdrsapps.database.windows.net",  # Full server name
             database=st.secrets["database"]["db_database"],
-            user=st.secrets["database"]["db_username"] + "@" + server.split('.')[0],  # Azure SQL format
-            password=st.secrets["database"]["db_password"],
-            port='1433'  # Azure SQL default port
+            user=st.secrets["database"]["db_username"],  # Just the username
+            password=st.secrets["database"]["db_password"]
         )
     except Exception as e:
         st.error(f"Database connection error: {str(e)}")
-        st.info("Please check:\n1. Azure SQL Server firewall rules\n2. Username format (should be username@server)\n3. Database credentials")
+        st.info("Please verify:\n1. Database credentials\n2. Server name format\n3. Firewall rules")
         return None
 
 # Get table name from secrets
