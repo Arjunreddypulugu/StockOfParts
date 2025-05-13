@@ -1,3 +1,5 @@
 unixodbc
 unixodbc-dev
-python3-pyodbc 
+python3-pyodbc
+freetds-dev
+freetds-bin 
