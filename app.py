@@ -101,7 +101,7 @@ def insert_entry(sku, manufacturer, part_number):
 
 # Get all entries
 def get_all_entries():
-    query = f"SELECT * FROM {TABLE_NAME} ORDER BY SKU, is_duplicate DESC"
+    query = f"SELECT * FROM {TABLE_NAME}"
     try:
         result = run_query(query)
         if result:
