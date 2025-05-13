@@ -1,67 +1,111 @@
-import cv2
-from pyzbar.pyzbar import decode
 import time
 import numpy as np
+import streamlit as st
+
+# Try to import OpenCV and pyzbar
+try:
+    import cv2
+    from pyzbar.pyzbar import decode
+    CV_AVAILABLE = True
+except ImportError:
+    CV_AVAILABLE = False
 
 def scan_barcode():
     """
     Open the camera and scan for barcodes.
     Returns the scanned barcode data or None if cancelled.
     """
-    # Initialize the camera
-    cap = cv2.VideoCapture(0)
-    
-    if not cap.isOpened():
-        print("Error: Could not open camera.")
+    if not CV_AVAILABLE:
+        st.error("OpenCV or pyzbar is not available. Barcode scanning is disabled.")
+        # Provide a text input as fallback
+        barcode_data = st.text_input("Enter barcode data manually:")
+        if barcode_data:
+            return barcode_data
         return None
     
-    # Set a timeout for scanning (10 seconds)
-    start_time = time.time()
-    timeout = 10
-    
-    while time.time() - start_time < timeout:
-        # Read a frame from the camera
-        ret, frame = cap.read()
+    # Check if running in Streamlit Cloud (headless environment)
+    try:
+        # Initialize the camera
+        cap = cv2.VideoCapture(0)
         
-        if not ret:
-            print("Error: Could not read frame.")
-            break
+        if not cap.isOpened():
+            st.error("Could not open camera. Running in headless environment?")
+            barcode_data = st.text_input("Enter barcode data manually:")
+            if barcode_data:
+                return barcode_data
+            return None
         
-        # Find barcodes in the frame
-        barcodes = decode(frame)
+        # Set a timeout for scanning (10 seconds)
+        start_time = time.time()
+        timeout = 10
         
-        # Display the frame
-        cv2.imshow('Barcode Scanner', frame)
-        
-        # Process detected barcodes
-        for barcode in barcodes:
-            # Extract barcode data
-            barcode_data = barcode.data.decode('utf-8')
+        while time.time() - start_time < timeout:
+            # Read a frame from the camera
+            ret, frame = cap.read()
             
-            # Draw a rectangle around the barcode
-            points = barcode.polygon
-            if len(points) > 4:
-                hull = cv2.convexHull(np.array([point for point in points], dtype=np.float32))
-                hull = np.intp(hull)
-                cv2.polylines(frame, [hull], True, (0, 255, 0), 2)
-            else:
-                pts = np.array([point for point in points], dtype=np.int32)
-                cv2.polylines(frame, [pts], True, (0, 255, 0), 2)
+            if not ret:
+                st.error("Could not read frame.")
+                break
             
-            # Display the barcode data
-            cv2.putText(frame, barcode_data, (barcode.rect.left, barcode.rect.top - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            # Find barcodes in the frame
+            barcodes = decode(frame)
             
-            # Release resources and return the barcode data
+            # Display the frame
+            try:
+                cv2.imshow('Barcode Scanner', frame)
+            except:
+                # Running in headless environment, can't show window
+                pass
+            
+            # Process detected barcodes
+            for barcode in barcodes:
+                # Extract barcode data
+                barcode_data = barcode.data.decode('utf-8')
+                
+                # Try to draw a rectangle around the barcode
+                try:
+                    points = barcode.polygon
+                    if len(points) > 4:
+                        hull = cv2.convexHull(np.array([point for point in points], dtype=np.float32))
+                        hull = np.intp(hull)
+                        cv2.polylines(frame, [hull], True, (0, 255, 0), 2)
+                    else:
+                        pts = np.array([point for point in points], dtype=np.int32)
+                        cv2.polylines(frame, [pts], True, (0, 255, 0), 2)
+                    
+                    # Display the barcode data
+                    cv2.putText(frame, barcode_data, (barcode.rect.left, barcode.rect.top - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                except:
+                    # Skip drawing if in headless environment
+                    pass
+                
+                # Release resources and return the barcode data
+                try:
+                    cap.release()
+                    cv2.destroyAllWindows()
+                except:
+                    pass
+                return barcode_data
+            
+            # Check for key press to exit
+            try:
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+            except:
+                # Skip key check if in headless environment
+                pass
+        
+        # Release resources if no barcode was found
+        try:
             cap.release()
             cv2.destroyAllWindows()
+        except:
+            pass
+        return None
+    except Exception as e:
+        st.error(f"Error in barcode scanning: {str(e)}")
+        barcode_data = st.text_input("Enter barcode data manually:")
+        if barcode_data:
             return barcode_data
-        
-        # Check for key press to exit
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-    
-    # Release resources if no barcode was found
-    cap.release()
-    cv2.destroyAllWindows()
-    return None 
+        return None 

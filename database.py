@@ -1,8 +1,30 @@
-import pyodbc
-from config import DB_CONFIG, TABLE_NAME
+try:
+    import pyodbc
+    PYODBC_AVAILABLE = True
+except ImportError:
+    PYODBC_AVAILABLE = False
+    import streamlit as st
+
+# Try to import from streamlit_config first, then fallback to config if available
+try:
+    from streamlit_config import DB_CONFIG, TABLE_NAME
+except ImportError:
+    try:
+        from config import DB_CONFIG, TABLE_NAME
+    except ImportError:
+        import streamlit as st
+        st.error("Neither streamlit_config.py nor config.py found. Database functionality will be disabled.")
+        PYODBC_AVAILABLE = False
+        # Define dummy values for DB_CONFIG and TABLE_NAME
+        DB_CONFIG = {}
+        TABLE_NAME = "StockOfParts"
 
 def get_connection():
     """Establish and return a database connection"""
+    if not PYODBC_AVAILABLE:
+        st.error("pyodbc is not available. Database functionality is disabled.")
+        return None
+        
     try:
         conn_str = f"DRIVER={{{DB_CONFIG['driver']}}};" \
                    f"SERVER={DB_CONFIG['server']};" \
@@ -17,6 +39,10 @@ def get_connection():
 
 def create_table_if_not_exists():
     """Create the parts inventory table if it doesn't exist"""
+    if not PYODBC_AVAILABLE:
+        print("pyodbc is not available. Database functionality is disabled.")
+        return
+        
     conn = get_connection()
     if conn:
         try:
@@ -44,6 +70,10 @@ def create_table_if_not_exists():
 
 def count_sku_entries(sku):
     """Count how many times a SKU appears in the database"""
+    if not PYODBC_AVAILABLE:
+        print("pyodbc is not available. Database functionality is disabled.")
+        return 0
+        
     conn = get_connection()
     if conn:
         try:
@@ -62,6 +92,10 @@ def count_sku_entries(sku):
 
 def insert_entry(sku, manufacturer, manufacturer_part_number, nth_entry):
     """Insert a new entry into the database"""
+    if not PYODBC_AVAILABLE:
+        print("pyodbc is not available. Database functionality is disabled.")
+        return False
+        
     conn = get_connection()
     if conn:
         try:

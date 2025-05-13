@@ -1,15 +1,39 @@
 import streamlit as st
 import time
 from barcode_scanner import scan_barcode
-from database import create_table_if_not_exists, count_sku_entries, insert_entry
+from database import create_table_if_not_exists, count_sku_entries, insert_entry, PYODBC_AVAILABLE
 
 def main():
     # Page title and description
     st.title("Barcode Data Entry System")
     st.subheader("Enter part information manually or scan barcodes")
     
-    # Ensure database table exists
-    create_table_if_not_exists()
+    # Check if database functionality is available
+    if not PYODBC_AVAILABLE:
+        st.warning("Database functionality is disabled. This is a demo mode with local storage only.")
+        
+        # Initialize session state for local storage
+        if 'entries' not in st.session_state:
+            st.session_state.entries = []
+            
+        # Function to count SKUs in local storage
+        def local_count_sku(sku):
+            return sum(1 for entry in st.session_state.entries if entry['sku'] == sku)
+            
+        # Function to add entry to local storage
+        def local_add_entry(sku, manufacturer, part_number, nth_entry):
+            st.session_state.entries.append({
+                'sku': sku,
+                'manufacturer': manufacturer,
+                'manufacturer_part_number': part_number,
+                'nth_entry': nth_entry
+            })
+            return True
+    else:
+        # Ensure database table exists
+        create_table_if_not_exists()
+        local_count_sku = count_sku_entries
+        local_add_entry = insert_entry
     
     # Create form for data entry
     with st.form("data_entry_form"):
@@ -38,7 +62,7 @@ def main():
         
         # Display SKU count information
         if sku:
-            count = count_sku_entries(sku)
+            count = local_count_sku(sku)
             if count > 0:
                 st.info(f"This SKU already exists {count} times in the database. This will be entry #{count + 1}.")
                 nth_entry = count + 1
@@ -55,10 +79,10 @@ def main():
             if not sku or not manufacturer or not part_number:
                 st.error("Please fill in all fields.")
             else:
-                # Insert data into database
-                success = insert_entry(sku, manufacturer, part_number, nth_entry)
+                # Insert data into database or local storage
+                success = local_add_entry(sku, manufacturer, part_number, nth_entry)
                 if success:
-                    st.success("Data successfully saved to the database!")
+                    st.success("Data successfully saved!")
                     # Clear the form
                     st.session_state.sku_input = ""
                     st.session_state.manufacturer_input = ""
@@ -66,7 +90,21 @@ def main():
                     time.sleep(1)
                     st.rerun()
                 else:
-                    st.error("Failed to save data to the database. Please try again.")
+                    st.error("Failed to save data. Please try again.")
+
+    # Display local entries if database is not available
+    if not PYODBC_AVAILABLE and st.session_state.entries:
+        st.subheader("Saved Entries (Local Storage)")
+        
+        # Create a dataframe to display entries
+        import pandas as pd
+        df = pd.DataFrame(st.session_state.entries)
+        st.dataframe(df)
+        
+        # Add a button to clear local storage
+        if st.button("Clear Local Storage"):
+            st.session_state.entries = []
+            st.rerun()
 
     # Handle barcode scanning
     if 'scanning' not in st.session_state:
