@@ -18,34 +18,10 @@ if 'scanned_sku' not in st.session_state:
     st.session_state.scanned_sku = ""
 if 'scanned_part_number' not in st.session_state:
     st.session_state.scanned_part_number = ""
-if 'current_scan_target' not in st.session_state:
-    st.session_state.current_scan_target = None
 if 'show_scanner' not in st.session_state:
     st.session_state.show_scanner = False
-if 'last_scan' not in st.session_state:
-    st.session_state.last_scan = None
-
-# Callback functions for barcode scanning
-def start_scanning(target):
-    st.session_state.current_scan_target = target
-    st.session_state.show_scanner = True
-    st.rerun()
-
-def stop_scanning():
-    st.session_state.show_scanner = False
-    st.session_state.current_scan_target = None
-    st.rerun()
-
-def use_scanned_value(value):
-    if st.session_state.current_scan_target == "SKU":
-        st.session_state.scanned_sku = value
-    elif st.session_state.current_scan_target == "PART_NUMBER":
-        st.session_state.scanned_part_number = value
-    
-    st.session_state.show_scanner = False
-    st.session_state.current_scan_target = None
-    st.session_state.last_scan = None
-    st.rerun()
+if 'scan_target' not in st.session_state:
+    st.session_state.scan_target = None
 
 # Simple barcode scanner HTML/JS component
 def barcode_scanner():
@@ -74,11 +50,6 @@ def barcode_scanner():
                 
                 // Display the scanned result
                 scannedResult.innerText = `Scanned: ${decodedText}`;
-                
-                // Store the value in localStorage for display purposes only
-                localStorage.setItem('lastScannedValue', decodedText);
-                
-                // No need to try to communicate with Streamlit - we'll use manual confirmation
             },
             (errorMessage) => {
                 console.log(`QR Code scanning error: ${errorMessage}`);
@@ -216,27 +187,62 @@ if st.session_state.form_submitted:
     st.session_state.form_submitted = False
     st.rerun()
 
+# Scanner section (outside the form)
+if st.session_state.show_scanner:
+    st.subheader(f"Scanning for {st.session_state.scan_target}")
+    
+    # Scanner container
+    with st.container():
+        # Show the scanner
+        components.html(barcode_scanner(), height=400)
+        
+        # Manual entry for scanned value
+        scanned_value = st.text_input("Enter the scanned value:", key="scanned_value_input")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Apply Value", key="apply_value"):
+                if scanned_value:
+                    if st.session_state.scan_target == "SKU":
+                        st.session_state.scanned_sku = scanned_value
+                    else:
+                        st.session_state.scanned_part_number = scanned_value
+                    st.session_state.show_scanner = False
+                    st.rerun()
+        with col2:
+            if st.button("Cancel", key="cancel_scan"):
+                st.session_state.show_scanner = False
+                st.rerun()
+                
+        st.info("After scanning, enter the value shown above in the field and click 'Apply Value'")
+
 # Create form for data entry
 with st.form("data_entry_form"):
-    # SKU input with barcode scanner
+    # SKU input with barcode scanner button
     st.subheader("SKU")
-    sku = st.text_input("Enter SKU manually (e.g., 999.000.932)", key="sku_input", value=st.session_state.scanned_sku)
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        sku = st.text_input("SKU (e.g., 999.000.932)", key="sku_input", value=st.session_state.scanned_sku)
+    with col2:
+        st.write("")
+        st.write("")
+        scan_sku = st.form_submit_button("📷 Scan", key="scan_sku_btn")
     
     # Manufacturer input
     manufacturer = st.text_input("Manufacturer (e.g., Siemens, Schneider, Pils)", key="manufacturer_input", value="")
     
     # Manufacturer part number input with barcode scanner
     st.subheader("Manufacturer Part Number")
-    part_number = st.text_input("Enter Manufacturer Part Number manually (e.g., L24DF3)", key="part_number_input", value=st.session_state.scanned_part_number)
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        part_number = st.text_input("Part Number (e.g., L24DF3)", key="part_number_input", value=st.session_state.scanned_part_number)
+    with col2:
+        st.write("")
+        st.write("")
+        scan_part = st.form_submit_button("📷 Scan", key="scan_part_btn")
     
     # Submit button
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        submit_button = st.form_submit_button("Submit")
-    with col2:
-        scan_sku_button = st.form_submit_button("Scan SKU", type="primary")
-    with col3:
-        scan_part_button = st.form_submit_button("Scan Part #", type="primary")
+    submit_button = st.form_submit_button("Submit")
     
     if submit_button:
         if not sku or not manufacturer or not part_number:
@@ -250,40 +256,15 @@ with st.form("data_entry_form"):
                 st.session_state.form_submitted = True
                 st.rerun()
     
-    if scan_sku_button:
-        st.session_state.current_scan_target = "SKU"
+    if scan_sku:
+        st.session_state.scan_target = "SKU"
         st.session_state.show_scanner = True
         st.rerun()
         
-    if scan_part_button:
-        st.session_state.current_scan_target = "PART_NUMBER"
+    if scan_part:
+        st.session_state.scan_target = "PART_NUMBER"
         st.session_state.show_scanner = True
         st.rerun()
-
-# Show scanner if activated
-if st.session_state.show_scanner:
-    st.subheader(f"Scanning for {st.session_state.current_scan_target}")
-    
-    # Scanner container
-    scanner_container = st.container()
-    with scanner_container:
-        # Show the scanner
-        components.html(barcode_scanner(), height=400)
-        
-        # Manual entry for scanned value
-        st.write("### Enter the scanned barcode value:")
-        scanned_value = st.text_input("Scanned value", key="manual_scan_value")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Use This Value", key="use_value"):
-                if scanned_value:
-                    use_scanned_value(scanned_value)
-        with col2:
-            if st.button("Cancel", key="cancel_scan"):
-                stop_scanning()
-                
-        st.info("After scanning, enter the value shown above in the 'Scanned value' field and click 'Use This Value'")
 
 # Display entries
 df = get_all_entries()
