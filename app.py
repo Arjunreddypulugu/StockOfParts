@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine, text
 from urllib.parse import quote_plus
+import streamlit.components.v1 as components
+import time
+import json
 
 # Display app header
 st.title("Barcode Data Entry System")
@@ -14,16 +17,93 @@ if 'scanned_sku' not in st.session_state:
     st.session_state.scanned_sku = ""
 if 'scanned_part_number' not in st.session_state:
     st.session_state.scanned_part_number = ""
+if 'current_scan_target' not in st.session_state:
+    st.session_state.current_scan_target = None
+if 'show_scanner' not in st.session_state:
+    st.session_state.show_scanner = False
 
-# Check URL parameters for barcode values
-if st.query_params:
-    if 'sku_value' in st.query_params:
-        st.session_state.scanned_sku = st.query_params['sku_value']
-        del st.query_params['sku_value']
+# Callback functions for barcode scanning
+def start_scanning(target):
+    st.session_state.current_scan_target = target
+    st.session_state.show_scanner = True
+    st.rerun()
+
+def stop_scanning():
+    st.session_state.show_scanner = False
+    st.session_state.current_scan_target = None
+    st.rerun()
+
+def process_scanned_value(scanned_value):
+    if st.session_state.current_scan_target == "SKU":
+        st.session_state.scanned_sku = scanned_value
+    elif st.session_state.current_scan_target == "PART_NUMBER":
+        st.session_state.scanned_part_number = scanned_value
     
-    if 'part_number_value' in st.query_params:
-        st.session_state.scanned_part_number = st.query_params['part_number_value']
-        del st.query_params['part_number_value']
+    st.session_state.show_scanner = False
+    st.session_state.current_scan_target = None
+    st.rerun()
+
+# HTML/JS for barcode scanning
+def barcode_scanner():
+    return """
+    <div style="margin-bottom: 20px;">
+        <div id="reader" style="width: 100%;"></div>
+        <div id="scanned-result" style="margin-top: 10px; font-weight: bold;"></div>
+    </div>
+
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script>
+        // Function to send data back to Streamlit
+        function sendToStreamlit(data) {
+            const submitForm = document.createElement('form');
+            submitForm.method = 'POST';
+            submitForm.action = '';
+
+            const hiddenField = document.createElement('input');
+            hiddenField.type = 'hidden';
+            hiddenField.name = 'scanned_value';
+            hiddenField.value = data;
+
+            submitForm.appendChild(hiddenField);
+            document.body.appendChild(submitForm);
+            submitForm.submit();
+        }
+
+        // Initialize scanner
+        const html5QrCode = new Html5Qrcode("reader");
+        const scannedResult = document.getElementById('scanned-result');
+        
+        // Start scanning
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            {
+                fps: 10,
+                qrbox: 250
+            },
+            (decodedText, decodedResult) => {
+                console.log(`Scan result: ${decodedText}`, decodedResult);
+                html5QrCode.stop();
+                
+                // Display the scanned result
+                scannedResult.innerText = `Scanned: ${decodedText}`;
+                
+                // Send to Streamlit
+                window.parent.postMessage({
+                    type: 'streamlit:setComponentValue',
+                    value: decodedText
+                }, '*');
+                
+                // Also try form submission as fallback
+                sendToStreamlit(decodedText);
+            },
+            (errorMessage) => {
+                console.log(`QR Code scanning error: ${errorMessage}`);
+            }
+        ).catch((err) => {
+            console.log(`Unable to start scanner: ${err}`);
+        });
+    </script>
+    """
 
 # Initialize connection
 @st.cache_resource
@@ -152,18 +232,29 @@ if st.session_state.form_submitted:
     st.session_state.form_submitted = False
     st.rerun()
 
+# Check for form submissions with scanned values
+scanned_value = st.experimental_get_query_params().get("scanned_value", [None])[0]
+if scanned_value:
+    process_scanned_value(scanned_value)
+
 # Create form for data entry
 with st.form("data_entry_form"):
     # SKU input with barcode scanner
     st.subheader("SKU")
-    sku = st.text_input("Enter SKU", key="sku_input", value=st.session_state.scanned_sku)
+    sku = st.text_input("Enter SKU manually (e.g., 999.000.932)", key="sku_input", value=st.session_state.scanned_sku)
+    
+    # Add barcode scanner button for SKU
+    st.button("Scan Barcode for SKU", key="scan_sku_btn", on_click=start_scanning, args=("SKU",), type="primary")
     
     # Manufacturer input
     manufacturer = st.text_input("Manufacturer (e.g., Siemens, Schneider, Pils)", key="manufacturer_input", value="")
     
     # Manufacturer part number input with barcode scanner
     st.subheader("Manufacturer Part Number")
-    part_number = st.text_input("Enter Part Number", key="part_number_input", value=st.session_state.scanned_part_number)
+    part_number = st.text_input("Enter Manufacturer Part Number manually (e.g., L24DF3)", key="part_number_input", value=st.session_state.scanned_part_number)
+    
+    # Add barcode scanner button for Manufacturer Part Number
+    st.button("Scan Barcode for Part Number", key="scan_part_btn", on_click=start_scanning, args=("PART_NUMBER",), type="primary")
     
     # Submit button
     submit_button = st.form_submit_button("Submit")
@@ -180,9 +271,14 @@ with st.form("data_entry_form"):
                 st.session_state.form_submitted = True
                 st.rerun()
 
-# Add a simple button outside the form for barcode scanning
-st.write("### Scan Barcode")
-st.write("For now, please manually enter the SKU and part numbers. We're working on improving the barcode scanning functionality.")
+# Show scanner if activated
+if st.session_state.show_scanner:
+    st.subheader(f"Scanning for {st.session_state.current_scan_target}")
+    scanner_placeholder = st.empty()
+    with scanner_placeholder.container():
+        components.html(barcode_scanner(), height=400)
+        if st.button("Cancel Scanning", key="cancel_scan"):
+            stop_scanning()
 
 # Display entries
 df = get_all_entries()
