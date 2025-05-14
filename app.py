@@ -73,35 +73,50 @@ def create_table():
     """
     return run_query(query)
 
-# Helper function to check if SKU exists using pandas
-def sku_exists(sku):
+# Helper function to get all existing SKUs
+def get_all_skus():
     query = f"SELECT SKU FROM {TABLE_NAME}"
     result = run_query(query)
-    st.write("All SKUs in table:", result)  # Debug output
     if result:
-        sku_list = [row['SKU'] for row in result]
-        st.write("SKU list:", sku_list)  # Debug output
-        return sku in sku_list
-    return False
+        # Convert all SKUs to lowercase strings and strip whitespace
+        return [str(row['SKU']).strip().lower() for row in result]
+    return []
 
 # Insert new entry
 def insert_entry(sku, manufacturer, part_number):
     try:
-        # Use pandas-based check for duplicate SKU
-        is_duplicate = 'yes' if sku_exists(sku) else 'no'
-        st.write(f"SKU '{sku}' duplicate? {is_duplicate}")  # Debug output
-
+        # IMPORTANT: Get all existing SKUs BEFORE inserting
+        existing_skus = get_all_skus()
+        st.write("Existing SKUs:", existing_skus)
+        
+        # Normalize the input SKU (lowercase and strip whitespace)
+        normalized_sku = sku.strip().lower()
+        st.write(f"Normalized input SKU: '{normalized_sku}'")
+        
+        # Check if SKU exists in the list of existing SKUs
+        is_duplicate = 'yes' if normalized_sku in existing_skus else 'no'
+        st.write(f"Is duplicate? {is_duplicate}")
+        
         # Insert the new record
         insert_query = f"""
         INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, is_duplicate) 
         VALUES (:sku, :manufacturer, :part_number, :is_duplicate)
         """
-        return run_query(insert_query, {
+        success = run_query(insert_query, {
             "sku": sku,
             "manufacturer": manufacturer,
             "part_number": part_number,
             "is_duplicate": is_duplicate
         })
+        
+        # Debug: Print the full table after insert
+        if success:
+            st.write("Insert successful!")
+            full_table_query = f"SELECT * FROM {TABLE_NAME}"
+            full_table = run_query(full_table_query)
+            st.write("Full table after insert:", full_table)
+        
+        return success
     except Exception as e:
         st.error(f"Error inserting entry: {str(e)}")
         return False
