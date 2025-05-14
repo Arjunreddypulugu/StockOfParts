@@ -20,17 +20,17 @@ if 'scanned_part_number' not in st.session_state:
 
 # Callback functions for barcode scanning
 def update_sku():
-    query_params = st.experimental_get_query_params()
-    if 'sku_value' in query_params:
-        st.session_state.scanned_sku = query_params['sku_value'][0]
-        st.experimental_set_query_params()
+    if 'sku_value' in st.query_params:
+        st.session_state.scanned_sku = st.query_params['sku_value']
+        # Clear the parameter
+        del st.query_params['sku_value']
         st.rerun()
 
 def update_part_number():
-    query_params = st.experimental_get_query_params()
-    if 'part_number_value' in query_params:
-        st.session_state.scanned_part_number = query_params['part_number_value'][0]
-        st.experimental_set_query_params()
+    if 'part_number_value' in st.query_params:
+        st.session_state.scanned_part_number = st.query_params['part_number_value']
+        # Clear the parameter
+        del st.query_params['part_number_value']
         st.rerun()
 
 # Check for query parameters on page load
