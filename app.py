@@ -23,6 +23,17 @@ if 'show_scanner' not in st.session_state:
 if 'scan_target' not in st.session_state:
     st.session_state.scan_target = None
 
+# Callback functions for barcode scanning
+def start_scan_sku():
+    st.session_state.scan_target = "SKU"
+    st.session_state.show_scanner = True
+    st.rerun()
+    
+def start_scan_part():
+    st.session_state.scan_target = "PART_NUMBER"
+    st.session_state.show_scanner = True
+    st.rerun()
+
 # Simple barcode scanner HTML/JS component
 def barcode_scanner():
     return """
@@ -187,6 +198,15 @@ if st.session_state.form_submitted:
     st.session_state.form_submitted = False
     st.rerun()
 
+# Scanner buttons outside the form
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("📷 Scan SKU", key="scan_sku_btn", on_click=start_scan_sku):
+        pass  # The on_click handles the action
+with col2:
+    if st.button("📷 Scan Part Number", key="scan_part_btn", on_click=start_scan_part):
+        pass  # The on_click handles the action
+
 # Scanner section (outside the form)
 if st.session_state.show_scanner:
     st.subheader(f"Scanning for {st.session_state.scan_target}")
@@ -218,30 +238,18 @@ if st.session_state.show_scanner:
 
 # Create form for data entry
 with st.form("data_entry_form"):
-    # SKU input with barcode scanner button
+    # SKU input
     st.subheader("SKU")
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        sku = st.text_input("SKU (e.g., 999.000.932)", key="sku_input", value=st.session_state.scanned_sku)
-    with col2:
-        st.write("")
-        st.write("")
-        scan_sku = st.form_submit_button("📷 Scan", key="scan_sku_btn")
+    sku = st.text_input("SKU (e.g., 999.000.932)", key="sku_input", value=st.session_state.scanned_sku)
     
     # Manufacturer input
     manufacturer = st.text_input("Manufacturer (e.g., Siemens, Schneider, Pils)", key="manufacturer_input", value="")
     
-    # Manufacturer part number input with barcode scanner
+    # Manufacturer part number input
     st.subheader("Manufacturer Part Number")
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        part_number = st.text_input("Part Number (e.g., L24DF3)", key="part_number_input", value=st.session_state.scanned_part_number)
-    with col2:
-        st.write("")
-        st.write("")
-        scan_part = st.form_submit_button("📷 Scan", key="scan_part_btn")
+    part_number = st.text_input("Part Number (e.g., L24DF3)", key="part_number_input", value=st.session_state.scanned_part_number)
     
-    # Submit button
+    # Submit button - this is the ONLY button in the form
     submit_button = st.form_submit_button("Submit")
     
     if submit_button:
@@ -255,16 +263,6 @@ with st.form("data_entry_form"):
                 st.session_state.scanned_part_number = ""
                 st.session_state.form_submitted = True
                 st.rerun()
-    
-    if scan_sku:
-        st.session_state.scan_target = "SKU"
-        st.session_state.show_scanner = True
-        st.rerun()
-        
-    if scan_part:
-        st.session_state.scan_target = "PART_NUMBER"
-        st.session_state.show_scanner = True
-        st.rerun()
 
 # Display entries
 df = get_all_entries()
