@@ -1,6 +1,7 @@
 import time
 import numpy as np
 import streamlit as st
+import streamlit.components.v1 as components
 
 # Try to import OpenCV and pyzbar
 try:
@@ -9,6 +10,79 @@ try:
     CV_AVAILABLE = True
 except ImportError:
     CV_AVAILABLE = False
+
+def html5_qr_scanner(callback_key=None):
+    """
+    Create an HTML5-based QR/barcode scanner component.
+    
+    Args:
+        callback_key: Optional session state key to store the scanned result
+    
+    Returns:
+        The HTML/JS component for rendering
+    """
+    return components.html(
+        """
+        <div style="margin-bottom: 20px;">
+            <div id="reader" style="width: 100%;"></div>
+            <div id="scanned-result" style="margin-top: 10px; font-weight: bold;"></div>
+        </div>
+
+        <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+        <script>
+            // Initialize scanner
+            const html5QrCode = new Html5Qrcode("reader");
+            const scannedResult = document.getElementById('scanned-result');
+            
+            // Start scanning
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                {
+                    fps: 10,
+                    qrbox: 250
+                },
+                (decodedText, decodedResult) => {
+                    console.log(`Scan result: ${decodedText}`, decodedResult);
+                    html5QrCode.stop();
+                    
+                    // Display the scanned result
+                    scannedResult.innerText = `Scanned: ${decodedText}`;
+                    
+                    // Send the value to Streamlit via window.parent.postMessage
+                    const data = {
+                        scanned_value: decodedText
+                    };
+                    
+                    // Use timeout to ensure the message is displayed before redirecting
+                    setTimeout(() => {
+                        // Fill the input field with the scanned value
+                        const inputField = document.getElementById('scanned_value_input');
+                        if (inputField) {
+                            inputField.value = decodedText;
+                            // Trigger a change event to update Streamlit's state
+                            const event = new Event('input', { bubbles: true });
+                            inputField.dispatchEvent(event);
+                        }
+                        
+                        // Auto-click the "Use This Value" button after a short delay
+                        setTimeout(() => {
+                            const useValueButton = document.querySelector('button[data-testid="baseButton-secondary"]');
+                            if (useValueButton) {
+                                useValueButton.click();
+                            }
+                        }, 500);
+                    }, 1000);
+                },
+                (errorMessage) => {
+                    console.log(`QR Code scanning error: ${errorMessage}`);
+                }
+            ).catch((err) => {
+                console.log(`Unable to start scanner: ${err}`);
+            });
+        </script>
+        """,
+        height=400
+    )
 
 def scan_barcode():
     """
