@@ -5,6 +5,12 @@ from urllib.parse import quote_plus
 import streamlit.components.v1 as components
 import time
 import json
+import cv2
+import numpy as np
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
+from typing import List, NamedTuple
+import av
+from pyzbar.pyzbar import decode
 
 # Display app header
 st.title("Barcode Data Entry System")
@@ -17,97 +23,74 @@ if 'scanned_sku' not in st.session_state:
     st.session_state.scanned_sku = ""
 if 'scanned_part_number' not in st.session_state:
     st.session_state.scanned_part_number = ""
+if 'active_scanner' not in st.session_state:
+    st.session_state.active_scanner = None
 
-# Callback functions for barcode scanning
-def update_sku():
-    if 'sku_value' in st.query_params:
-        st.session_state.scanned_sku = st.query_params['sku_value']
-        # Clear the parameter
-        del st.query_params['sku_value']
-        st.rerun()
+# Define RTC configuration (use Google's STUN server)
+rtc_configuration = RTCConfiguration(
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+)
 
-def update_part_number():
-    if 'part_number_value' in st.query_params:
-        st.session_state.scanned_part_number = st.query_params['part_number_value']
-        # Clear the parameter
-        del st.query_params['part_number_value']
-        st.rerun()
+# Barcode detection result class
+class BarcodeResult(NamedTuple):
+    barcode_value: str
+    bounding_box: List[List[int]]
 
-# Check for query parameters on page load
-update_sku()
-update_part_number()
-
-# HTML/JS for barcode scanning
-def barcode_scanner(field_type):
-    param_name = "sku_value" if field_type == "SKU" else "part_number_value"
-    
-    return f"""
-    <div style="margin-bottom: 20px;">
-        <button id="start-scanner-{field_type}" style="background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 10px;">
-            Start Scanner for {field_type}
-        </button>
-        <div id="scanner-container-{field_type}" style="display: none;">
-            <div id="reader-{field_type}" style="width: 100%;"></div>
-            <button id="stop-scanner-{field_type}" style="background-color: #f44336; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px;">
-                Stop Scanner
-            </button>
-        </div>
-        <div id="scanned-result-{field_type}" style="margin-top: 10px; font-weight: bold;"></div>
-    </div>
-
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-    <script>
-        const startScannerBtn = document.getElementById('start-scanner-{field_type}');
-        const stopScannerBtn = document.getElementById('stop-scanner-{field_type}');
-        const scannerContainer = document.getElementById('scanner-container-{field_type}');
-        const scannedResult = document.getElementById('scanned-result-{field_type}');
-        let html5QrCode;
-
-        startScannerBtn.addEventListener('click', function() {{
-            scannerContainer.style.display = 'block';
-            startScannerBtn.style.display = 'none';
+# Video processor for barcode detection
+class BarcodeVideoProcessor(VideoProcessorBase):
+    def __init__(self, target_field):
+        self.target_field = target_field
+        self.result_queue = []
+        self.last_barcode = None
+        self.barcode_detected = False
+        
+    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
+        img = frame.to_ndarray(format="bgr24")
+        
+        # Detect barcodes
+        barcodes = decode(img)
+        
+        # Process detected barcodes
+        self.barcode_detected = False
+        for barcode in barcodes:
+            # Extract barcode value and bounding box
+            barcode_value = barcode.data.decode("utf-8")
             
-            html5QrCode = new Html5Qrcode("reader-{field_type}");
-            html5QrCode.start(
-                {{ facingMode: "environment" }}, 
-                {{
-                    fps: 10,
-                    qrbox: 250
-                }},
-                (decodedText, decodedResult) => {{
-                    console.log(`Scan result: ${{decodedText}}`, decodedResult);
-                    html5QrCode.stop();
-                    scannerContainer.style.display = 'none';
-                    startScannerBtn.style.display = 'block';
-                    
-                    // Display the scanned result
-                    scannedResult.innerText = `Scanned: ${{decodedText}}`;
-                    
-                    // Add the value to URL parameters and reload the page
-                    const url = new URL(window.location.href);
-                    url.searchParams.set('{param_name}', decodedText);
-                    window.location.href = url.toString();
-                }},
-                (errorMessage) => {{
-                    console.log(`QR Code scanning error: ${{errorMessage}}`);
-                }}
-            ).catch((err) => {{
-                console.log(`Unable to start scanner: ${{err}}`);
-            }});
-        }});
-
-        stopScannerBtn.addEventListener('click', function() {{
-            if (html5QrCode) {{
-                html5QrCode.stop().then(() => {{
-                    scannerContainer.style.display = 'none';
-                    startScannerBtn.style.display = 'block';
-                }}).catch((err) => {{
-                    console.log(`Error stopping scanner: ${{err}}`);
-                }});
-            }}
-        }});
-    </script>
-    """
+            # Don't process the same barcode repeatedly
+            if self.last_barcode == barcode_value:
+                continue
+                
+            self.last_barcode = barcode_value
+            self.barcode_detected = True
+            
+            # Draw bounding box
+            points = barcode.polygon
+            if len(points) > 0:
+                pts = np.array([[(p.x, p.y) for p in points]], dtype=np.int32)
+                cv2.polylines(img, pts, True, (0, 255, 0), 2)
+            
+            # Draw barcode value
+            x, y, w, h = barcode.rect
+            cv2.putText(
+                img, 
+                barcode_value, 
+                (x, y - 10), 
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5, 
+                (0, 255, 0), 
+                2
+            )
+            
+            # Add to result queue
+            self.result_queue.append(barcode_value)
+            
+            # Update session state based on target field
+            if self.target_field == "sku":
+                st.session_state.scanned_sku = barcode_value
+            elif self.target_field == "part_number":
+                st.session_state.scanned_part_number = barcode_value
+        
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 # Initialize connection
 @st.cache_resource
@@ -244,7 +227,13 @@ with st.form("data_entry_form"):
     
     # Add barcode scanner for SKU
     st.write("Or scan barcode:")
-    components.html(barcode_scanner("SKU"), height=300)
+    
+    sku_scanner_col1, sku_scanner_col2 = st.columns([1, 1])
+    with sku_scanner_col1:
+        sku_scanner_placeholder = st.empty()
+        if st.button("Scan SKU", key="scan_sku_btn"):
+            st.session_state.active_scanner = "sku"
+            st.rerun()
     
     # Manufacturer input
     manufacturer = st.text_input("Manufacturer (e.g., Siemens, Schneider, Pils)", key="manufacturer_input", value="")
@@ -255,7 +244,13 @@ with st.form("data_entry_form"):
     
     # Add barcode scanner for Manufacturer Part Number
     st.write("Or scan barcode:")
-    components.html(barcode_scanner("Part_Number"), height=300)
+    
+    pn_scanner_col1, pn_scanner_col2 = st.columns([1, 1])
+    with pn_scanner_col1:
+        pn_scanner_placeholder = st.empty()
+        if st.button("Scan Part Number", key="scan_pn_btn"):
+            st.session_state.active_scanner = "part_number"
+            st.rerun()
     
     # Submit button
     submit_button = st.form_submit_button("Submit")
@@ -271,6 +266,39 @@ with st.form("data_entry_form"):
                 st.session_state.scanned_part_number = ""
                 st.session_state.form_submitted = True
                 st.rerun()
+
+# Display active scanner outside the form
+if st.session_state.active_scanner == "sku":
+    st.subheader("SKU Barcode Scanner")
+    scanner = webrtc_streamer(
+        key="sku_scanner",
+        video_processor_factory=lambda: BarcodeVideoProcessor(target_field="sku"),
+        rtc_configuration=rtc_configuration,
+        media_stream_constraints={"video": True, "audio": False},
+    )
+    
+    if scanner.state.playing:
+        st.write("Scanning for barcodes... Point your camera at a barcode.")
+    
+    if st.button("Stop Scanner & Use Value"):
+        st.session_state.active_scanner = None
+        st.rerun()
+
+elif st.session_state.active_scanner == "part_number":
+    st.subheader("Part Number Barcode Scanner")
+    scanner = webrtc_streamer(
+        key="part_number_scanner",
+        video_processor_factory=lambda: BarcodeVideoProcessor(target_field="part_number"),
+        rtc_configuration=rtc_configuration,
+        media_stream_constraints={"video": True, "audio": False},
+    )
+    
+    if scanner.state.playing:
+        st.write("Scanning for barcodes... Point your camera at a barcode.")
+    
+    if st.button("Stop Scanner & Use Value"):
+        st.session_state.active_scanner = None
+        st.rerun()
 
 # Display entries
 df = get_all_entries()

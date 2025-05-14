@@ -1,4 +1,7 @@
 streamlit
 pandas
 pymssql
-sqlalchemy 
+sqlalchemy
+streamlit-webrtc
+opencv-python-headless
+pyzbar 
