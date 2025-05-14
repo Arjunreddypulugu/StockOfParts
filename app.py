@@ -243,9 +243,6 @@ with st.form("data_entry_form"):
     st.subheader("SKU")
     sku = st.text_input("Enter SKU manually (e.g., 999.000.932)", key="sku_input", value=st.session_state.scanned_sku)
     
-    # Add barcode scanner button for SKU
-    st.button("Scan Barcode for SKU", key="scan_sku_btn", on_click=start_scanning, args=("SKU",), type="primary")
-    
     # Manufacturer input
     manufacturer = st.text_input("Manufacturer (e.g., Siemens, Schneider, Pils)", key="manufacturer_input", value="")
     
@@ -253,11 +250,14 @@ with st.form("data_entry_form"):
     st.subheader("Manufacturer Part Number")
     part_number = st.text_input("Enter Manufacturer Part Number manually (e.g., L24DF3)", key="part_number_input", value=st.session_state.scanned_part_number)
     
-    # Add barcode scanner button for Manufacturer Part Number
-    st.button("Scan Barcode for Part Number", key="scan_part_btn", on_click=start_scanning, args=("PART_NUMBER",), type="primary")
-    
     # Submit button
-    submit_button = st.form_submit_button("Submit")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        submit_button = st.form_submit_button("Submit")
+    with col2:
+        scan_sku_button = st.form_submit_button("Scan SKU", type="primary")
+    with col3:
+        scan_part_button = st.form_submit_button("Scan Part #", type="primary")
     
     if submit_button:
         if not sku or not manufacturer or not part_number:
@@ -270,6 +270,16 @@ with st.form("data_entry_form"):
                 st.session_state.scanned_part_number = ""
                 st.session_state.form_submitted = True
                 st.rerun()
+    
+    if scan_sku_button:
+        st.session_state.current_scan_target = "SKU"
+        st.session_state.show_scanner = True
+        st.rerun()
+        
+    if scan_part_button:
+        st.session_state.current_scan_target = "PART_NUMBER"
+        st.session_state.show_scanner = True
+        st.rerun()
 
 # Show scanner if activated
 if st.session_state.show_scanner:
