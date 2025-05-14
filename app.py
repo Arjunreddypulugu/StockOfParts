@@ -73,15 +73,23 @@ def create_table():
     """
     return run_query(query)
 
+# Helper function to check if SKU exists using pandas
+def sku_exists(sku):
+    query = f"SELECT SKU FROM {TABLE_NAME}"
+    result = run_query(query)
+    st.write("All SKUs in table:", result)  # Debug output
+    if result:
+        sku_list = [row['SKU'] for row in result]
+        st.write("SKU list:", sku_list)  # Debug output
+        return sku in sku_list
+    return False
+
 # Insert new entry
 def insert_entry(sku, manufacturer, part_number):
     try:
-        # Check if SKU exists before inserting
-        check_query = f"SELECT COUNT(*) as count FROM {TABLE_NAME} WHERE SKU = :sku"
-        result = run_query(check_query, {"sku": sku})
-        st.write(f"Duplicate check result for SKU '{sku}': {result}")  # Debug output
-        count = result[0]['count'] if result and len(result) > 0 else 0
-        is_duplicate = 'yes' if count > 0 else 'no'
+        # Use pandas-based check for duplicate SKU
+        is_duplicate = 'yes' if sku_exists(sku) else 'no'
+        st.write(f"SKU '{sku}' duplicate? {is_duplicate}")  # Debug output
 
         # Insert the new record
         insert_query = f"""
