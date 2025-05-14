@@ -4,83 +4,71 @@ from sqlalchemy import create_engine, text
 from urllib.parse import quote_plus
 import streamlit.components.v1 as components
 import time
+import json
 
 # Display app header
 st.title("Barcode Data Entry System")
 st.subheader("Enter part information manually or scan barcodes")
 
-# Initialize success flag in session state if not present
+# Initialize session state variables
 if 'form_submitted' not in st.session_state:
     st.session_state.form_submitted = False
-
-# Initialize session state for barcode values
 if 'scanned_sku' not in st.session_state:
     st.session_state.scanned_sku = ""
 if 'scanned_part_number' not in st.session_state:
     st.session_state.scanned_part_number = ""
-if 'update_sku' not in st.session_state:
-    st.session_state.update_sku = ""
-if 'update_part_number' not in st.session_state:
-    st.session_state.update_part_number = ""
 
 # Callback functions for barcode scanning
-def update_sku(barcode_value):
-    st.session_state.scanned_sku = barcode_value
-    st.rerun()
+def update_sku():
+    query_params = st.experimental_get_query_params()
+    if 'sku_value' in query_params:
+        st.session_state.scanned_sku = query_params['sku_value'][0]
+        st.experimental_set_query_params()
+        st.rerun()
 
-def update_part_number(barcode_value):
-    st.session_state.scanned_part_number = barcode_value
-    st.rerun()
+def update_part_number():
+    query_params = st.experimental_get_query_params()
+    if 'part_number_value' in query_params:
+        st.session_state.scanned_part_number = query_params['part_number_value'][0]
+        st.experimental_set_query_params()
+        st.rerun()
+
+# Check for query parameters on page load
+update_sku()
+update_part_number()
 
 # HTML/JS for barcode scanning
-def barcode_scanner(callback_name, field_name):
+def barcode_scanner(field_type):
+    param_name = "sku_value" if field_type == "SKU" else "part_number_value"
+    
     return f"""
     <div style="margin-bottom: 20px;">
-        <button id="start-scanner-{field_name}" style="background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 10px;">
-            Start Scanner for {field_name}
+        <button id="start-scanner-{field_type}" style="background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 10px;">
+            Start Scanner for {field_type}
         </button>
-        <div id="scanner-container-{field_name}" style="display: none;">
-            <div id="reader-{field_name}" style="width: 100%;"></div>
-            <button id="stop-scanner-{field_name}" style="background-color: #f44336; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px;">
+        <div id="scanner-container-{field_type}" style="display: none;">
+            <div id="reader-{field_type}" style="width: 100%;"></div>
+            <button id="stop-scanner-{field_type}" style="background-color: #f44336; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px;">
                 Stop Scanner
             </button>
         </div>
-        <div id="scanned-result-{field_name}" style="margin-top: 10px; font-weight: bold;"></div>
+        <div id="scanned-result-{field_type}" style="margin-top: 10px; font-weight: bold;"></div>
     </div>
 
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script>
-        const startScannerBtn{field_name} = document.getElementById('start-scanner-{field_name}');
-        const stopScannerBtn{field_name} = document.getElementById('stop-scanner-{field_name}');
-        const scannerContainer{field_name} = document.getElementById('scanner-container-{field_name}');
-        const scannedResult{field_name} = document.getElementById('scanned-result-{field_name}');
-        let html5QrCode{field_name};
+        const startScannerBtn = document.getElementById('start-scanner-{field_type}');
+        const stopScannerBtn = document.getElementById('stop-scanner-{field_type}');
+        const scannerContainer = document.getElementById('scanner-container-{field_type}');
+        const scannedResult = document.getElementById('scanned-result-{field_type}');
+        let html5QrCode;
 
-        function updateStreamlitField(value) {{
-            // Direct approach - set the value in session state
-            window.parent.postMessage({{
-                type: "streamlit:setComponentValue",
-                value: value,
-                dataType: "string",
-                key: "{callback_name}"
-            }}, "*");
+        startScannerBtn.addEventListener('click', function() {{
+            scannerContainer.style.display = 'block';
+            startScannerBtn.style.display = 'none';
             
-            // Also try the callback approach
-            window.parent.postMessage({{
-                type: "streamlit:componentCommunication",
-                data: {{
-                    type: "{callback_name}",
-                    value: value
-                }}
-            }}, "*");
-        }}
-
-        startScannerBtn{field_name}.addEventListener('click', function() {{
-            scannerContainer{field_name}.style.display = 'block';
-            startScannerBtn{field_name}.style.display = 'none';
-            
-            html5QrCode{field_name} = new Html5Qrcode("reader-{field_name}");
-            html5QrCode{field_name}.start(
+            html5QrCode = new Html5Qrcode("reader-{field_type}");
+            html5QrCode.start(
                 {{ facingMode: "environment" }}, 
                 {{
                     fps: 10,
@@ -88,20 +76,17 @@ def barcode_scanner(callback_name, field_name):
                 }},
                 (decodedText, decodedResult) => {{
                     console.log(`Scan result: ${{decodedText}}`, decodedResult);
-                    html5QrCode{field_name}.stop();
-                    scannerContainer{field_name}.style.display = 'none';
-                    startScannerBtn{field_name}.style.display = 'block';
+                    html5QrCode.stop();
+                    scannerContainer.style.display = 'none';
+                    startScannerBtn.style.display = 'block';
                     
                     // Display the scanned result
-                    scannedResult{field_name}.innerText = `Scanned: ${{decodedText}}`;
+                    scannedResult.innerText = `Scanned: ${{decodedText}}`;
                     
-                    // Try multiple approaches to update the Streamlit field
-                    updateStreamlitField(decodedText);
-                    
-                    // Force a page reload after a short delay
-                    setTimeout(() => {{
-                        window.parent.location.reload();
-                    }}, 500);
+                    // Add the value to URL parameters and reload the page
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('{param_name}', decodedText);
+                    window.location.href = url.toString();
                 }},
                 (errorMessage) => {{
                     console.log(`QR Code scanning error: ${{errorMessage}}`);
@@ -111,11 +96,11 @@ def barcode_scanner(callback_name, field_name):
             }});
         }});
 
-        stopScannerBtn{field_name}.addEventListener('click', function() {{
-            if (html5QrCode{field_name}) {{
-                html5QrCode{field_name}.stop().then(() => {{
-                    scannerContainer{field_name}.style.display = 'none';
-                    startScannerBtn{field_name}.style.display = 'block';
+        stopScannerBtn.addEventListener('click', function() {{
+            if (html5QrCode) {{
+                html5QrCode.stop().then(() => {{
+                    scannerContainer.style.display = 'none';
+                    startScannerBtn.style.display = 'block';
                 }}).catch((err) => {{
                     console.log(`Error stopping scanner: ${{err}}`);
                 }});
@@ -255,34 +240,22 @@ if st.session_state.form_submitted:
 with st.form("data_entry_form"):
     # SKU input with barcode scanner
     st.subheader("SKU")
-    
-    # Check if we have a scanned value from the component
-    if st.session_state.update_sku:
-        st.session_state.scanned_sku = st.session_state.update_sku
-        st.session_state.update_sku = ""
-    
     sku = st.text_input("Enter SKU manually (e.g., 999.000.932)", key="sku_input", value=st.session_state.scanned_sku)
     
     # Add barcode scanner for SKU
     st.write("Or scan barcode:")
-    components.html(barcode_scanner("update_sku", "SKU"), height=300)
+    components.html(barcode_scanner("SKU"), height=300)
     
     # Manufacturer input
     manufacturer = st.text_input("Manufacturer (e.g., Siemens, Schneider, Pils)", key="manufacturer_input", value="")
     
     # Manufacturer part number input with barcode scanner
     st.subheader("Manufacturer Part Number")
-    
-    # Check if we have a scanned value from the component
-    if st.session_state.update_part_number:
-        st.session_state.scanned_part_number = st.session_state.update_part_number
-        st.session_state.update_part_number = ""
-    
     part_number = st.text_input("Enter Manufacturer Part Number manually (e.g., L24DF3)", key="part_number_input", value=st.session_state.scanned_part_number)
     
     # Add barcode scanner for Manufacturer Part Number
     st.write("Or scan barcode:")
-    components.html(barcode_scanner("update_part_number", "Part_Number"), height=300)
+    components.html(barcode_scanner("Part_Number"), height=300)
     
     # Submit button
     submit_button = st.form_submit_button("Submit")
@@ -298,34 +271,6 @@ with st.form("data_entry_form"):
                 st.session_state.scanned_part_number = ""
                 st.session_state.form_submitted = True
                 st.rerun()
-
-# Register the callback functions
-components.html(
-    """
-    <script>
-    window.addEventListener('message', function(event) {
-        if (event.data.type === 'streamlit:callback') {
-            if (event.data.callback_name === 'update_sku') {
-                window.parent.postMessage({
-                    type: 'streamlit:setComponentValue',
-                    value: event.data.args[0],
-                    dataType: 'str',
-                    key: 'sku_input'
-                }, '*');
-            } else if (event.data.callback_name === 'update_part_number') {
-                window.parent.postMessage({
-                    type: 'streamlit:setComponentValue',
-                    value: event.data.args[0],
-                    dataType: 'str',
-                    key: 'part_number_input'
-                }, '*');
-            }
-        }
-    });
-    </script>
-    """,
-    height=0,
-)
 
 # Display entries
 df = get_all_entries()
