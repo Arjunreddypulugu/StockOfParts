@@ -18,6 +18,10 @@ if 'scanned_sku' not in st.session_state:
     st.session_state.scanned_sku = ""
 if 'scanned_part_number' not in st.session_state:
     st.session_state.scanned_part_number = ""
+if 'update_sku' not in st.session_state:
+    st.session_state.update_sku = ""
+if 'update_part_number' not in st.session_state:
+    st.session_state.update_part_number = ""
 
 # Callback functions for barcode scanning
 def update_sku(barcode_value):
@@ -41,6 +45,7 @@ def barcode_scanner(callback_name, field_name):
                 Stop Scanner
             </button>
         </div>
+        <div id="scanned-result-{field_name}" style="margin-top: 10px; font-weight: bold;"></div>
     </div>
 
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -48,7 +53,27 @@ def barcode_scanner(callback_name, field_name):
         const startScannerBtn{field_name} = document.getElementById('start-scanner-{field_name}');
         const stopScannerBtn{field_name} = document.getElementById('stop-scanner-{field_name}');
         const scannerContainer{field_name} = document.getElementById('scanner-container-{field_name}');
+        const scannedResult{field_name} = document.getElementById('scanned-result-{field_name}');
         let html5QrCode{field_name};
+
+        function updateStreamlitField(value) {{
+            // Direct approach - set the value in session state
+            window.parent.postMessage({{
+                type: "streamlit:setComponentValue",
+                value: value,
+                dataType: "string",
+                key: "{callback_name}"
+            }}, "*");
+            
+            // Also try the callback approach
+            window.parent.postMessage({{
+                type: "streamlit:componentCommunication",
+                data: {{
+                    type: "{callback_name}",
+                    value: value
+                }}
+            }}, "*");
+        }}
 
         startScannerBtn{field_name}.addEventListener('click', function() {{
             scannerContainer{field_name}.style.display = 'block';
@@ -66,11 +91,17 @@ def barcode_scanner(callback_name, field_name):
                     html5QrCode{field_name}.stop();
                     scannerContainer{field_name}.style.display = 'none';
                     startScannerBtn{field_name}.style.display = 'block';
-                    window.parent.postMessage({{
-                        type: "streamlit:callback",
-                        callback_name: "{callback_name}",
-                        args: [decodedText]
-                    }}, "*");
+                    
+                    // Display the scanned result
+                    scannedResult{field_name}.innerText = `Scanned: ${{decodedText}}`;
+                    
+                    // Try multiple approaches to update the Streamlit field
+                    updateStreamlitField(decodedText);
+                    
+                    // Force a page reload after a short delay
+                    setTimeout(() => {{
+                        window.parent.location.reload();
+                    }}, 500);
                 }},
                 (errorMessage) => {{
                     console.log(`QR Code scanning error: ${{errorMessage}}`);
@@ -224,6 +255,12 @@ if st.session_state.form_submitted:
 with st.form("data_entry_form"):
     # SKU input with barcode scanner
     st.subheader("SKU")
+    
+    # Check if we have a scanned value from the component
+    if st.session_state.update_sku:
+        st.session_state.scanned_sku = st.session_state.update_sku
+        st.session_state.update_sku = ""
+    
     sku = st.text_input("Enter SKU manually (e.g., 999.000.932)", key="sku_input", value=st.session_state.scanned_sku)
     
     # Add barcode scanner for SKU
@@ -235,6 +272,12 @@ with st.form("data_entry_form"):
     
     # Manufacturer part number input with barcode scanner
     st.subheader("Manufacturer Part Number")
+    
+    # Check if we have a scanned value from the component
+    if st.session_state.update_part_number:
+        st.session_state.scanned_part_number = st.session_state.update_part_number
+        st.session_state.update_part_number = ""
+    
     part_number = st.text_input("Enter Manufacturer Part Number manually (e.g., L24DF3)", key="part_number_input", value=st.session_state.scanned_part_number)
     
     # Add barcode scanner for Manufacturer Part Number
