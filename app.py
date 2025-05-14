@@ -85,28 +85,25 @@ def get_all_skus():
 # Insert new entry
 def insert_entry(sku, manufacturer, part_number):
     try:
-        # IMPORTANT: Get all existing SKUs BEFORE inserting
-        existing_skus = get_all_skus()
-        st.write("Existing SKUs:", existing_skus)
-        
-        # Normalize the input SKU (lowercase and strip whitespace)
-        normalized_sku = sku.strip().lower()
-        st.write(f"Normalized input SKU: '{normalized_sku}'")
-        
-        # Check if SKU exists in the list of existing SKUs
-        is_duplicate = 'yes' if normalized_sku in existing_skus else 'no'
-        st.write(f"Is duplicate? {is_duplicate}")
-        
-        # Insert the new record
+        # DIRECT SQL APPROACH - Use a CASE statement in the INSERT query itself
+        # This will set is_duplicate based on whether the SKU already exists in the table
         insert_query = f"""
         INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, is_duplicate) 
-        VALUES (:sku, :manufacturer, :part_number, :is_duplicate)
+        VALUES (
+            :sku, 
+            :manufacturer, 
+            :part_number, 
+            CASE 
+                WHEN EXISTS (SELECT 1 FROM {TABLE_NAME} WHERE SKU = :sku) THEN 'yes' 
+                ELSE 'no' 
+            END
+        )
         """
+        
         success = run_query(insert_query, {
             "sku": sku,
             "manufacturer": manufacturer,
-            "part_number": part_number,
-            "is_duplicate": is_duplicate
+            "part_number": part_number
         })
         
         # Debug: Print the full table after insert
