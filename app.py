@@ -5,6 +5,7 @@ from urllib.parse import quote_plus
 import streamlit.components.v1 as components
 import time
 import json
+import base64
 
 # Display app header
 st.title("Barcode Data Entry System")
@@ -21,6 +22,8 @@ if 'current_scan_target' not in st.session_state:
     st.session_state.current_scan_target = None
 if 'show_scanner' not in st.session_state:
     st.session_state.show_scanner = False
+if 'last_scanned_value' not in st.session_state:
+    st.session_state.last_scanned_value = ""
 
 # Callback functions for barcode scanning
 def start_scanning(target):
@@ -34,14 +37,22 @@ def stop_scanning():
     st.rerun()
 
 def process_scanned_value(scanned_value):
-    if st.session_state.current_scan_target == "SKU":
-        st.session_state.scanned_sku = scanned_value
-    elif st.session_state.current_scan_target == "PART_NUMBER":
-        st.session_state.scanned_part_number = scanned_value
-    
-    st.session_state.show_scanner = False
-    st.session_state.current_scan_target = None
-    st.rerun()
+    if scanned_value:
+        st.write(f"Processing scanned value: {scanned_value}")
+        if st.session_state.current_scan_target == "SKU":
+            st.session_state.scanned_sku = scanned_value
+            st.write(f"Updated SKU to: {st.session_state.scanned_sku}")
+        elif st.session_state.current_scan_target == "PART_NUMBER":
+            st.session_state.scanned_part_number = scanned_value
+            st.write(f"Updated Part Number to: {st.session_state.scanned_part_number}")
+        
+        st.session_state.show_scanner = False
+        st.session_state.last_scanned_value = ""
+        st.rerun()
+
+# Check for manual form submission with scanned value
+if 'last_scanned_value' in st.session_state and st.session_state.last_scanned_value:
+    process_scanned_value(st.session_state.last_scanned_value)
 
 # HTML/JS for barcode scanning
 def barcode_scanner():
@@ -49,29 +60,19 @@ def barcode_scanner():
     <div style="margin-bottom: 20px;">
         <div id="reader" style="width: 100%;"></div>
         <div id="scanned-result" style="margin-top: 10px; font-weight: bold;"></div>
+        <div id="status-message" style="margin-top: 5px; color: blue;"></div>
     </div>
 
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script>
-        // Function to send data back to Streamlit
-        function sendToStreamlit(data) {
-            const submitForm = document.createElement('form');
-            submitForm.method = 'POST';
-            submitForm.action = '';
-
-            const hiddenField = document.createElement('input');
-            hiddenField.type = 'hidden';
-            hiddenField.name = 'scanned_value';
-            hiddenField.value = data;
-
-            submitForm.appendChild(hiddenField);
-            document.body.appendChild(submitForm);
-            submitForm.submit();
-        }
-
         // Initialize scanner
         const html5QrCode = new Html5Qrcode("reader");
         const scannedResult = document.getElementById('scanned-result');
+        const statusMessage = document.getElementById('status-message');
+        
+        function updateStatus(message) {
+            statusMessage.innerText = message;
+        }
         
         // Start scanning
         html5QrCode.start(
@@ -86,15 +87,36 @@ def barcode_scanner():
                 
                 // Display the scanned result
                 scannedResult.innerText = `Scanned: ${decodedText}`;
+                updateStatus("Scan successful! Updating field...");
                 
-                // Send to Streamlit
-                window.parent.postMessage({
-                    type: 'streamlit:setComponentValue',
-                    value: decodedText
-                }, '*');
+                // Method 1: Try to communicate with Streamlit directly
+                try {
+                    window.parent.postMessage({
+                        type: 'streamlit:setComponentValue',
+                        value: decodedText
+                    }, '*');
+                    updateStatus("Method 1 attempted");
+                } catch (e) {
+                    console.error("Method 1 failed:", e);
+                }
                 
-                // Also try form submission as fallback
-                sendToStreamlit(decodedText);
+                // Method 2: Use sessionStorage
+                try {
+                    sessionStorage.setItem('scannedValue', decodedText);
+                    updateStatus("Method 2 attempted");
+                } catch (e) {
+                    console.error("Method 2 failed:", e);
+                }
+                
+                // Method 3: Update URL and reload
+                try {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('scanned_value', decodedText);
+                    window.location.href = url.toString();
+                    updateStatus("Method 3 attempted - redirecting...");
+                } catch (e) {
+                    console.error("Method 3 failed:", e);
+                }
             },
             (errorMessage) => {
                 console.log(`QR Code scanning error: ${errorMessage}`);
@@ -232,10 +254,13 @@ if st.session_state.form_submitted:
     st.session_state.form_submitted = False
     st.rerun()
 
-# Check for form submissions with scanned values
-scanned_value = st.query_params.get("scanned_value", None)
-if scanned_value:
-    process_scanned_value(scanned_value)
+# Check for query parameters that might contain scanned values
+if "scanned_value" in st.query_params:
+    scanned_value = st.query_params["scanned_value"]
+    # Remove the parameter to prevent duplicate processing
+    del st.query_params["scanned_value"]
+    st.session_state.last_scanned_value = scanned_value
+    st.rerun()
 
 # Create form for data entry
 with st.form("data_entry_form"):
@@ -287,8 +312,19 @@ if st.session_state.show_scanner:
     scanner_placeholder = st.empty()
     with scanner_placeholder.container():
         components.html(barcode_scanner(), height=400)
-        if st.button("Cancel Scanning", key="cancel_scan"):
-            stop_scanning()
+        
+        # Manual entry option as a fallback
+        st.write("If scanning doesn't work, enter the value manually:")
+        manual_value = st.text_input("Scanned value", key="manual_scan_value")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Use This Value", key="use_manual"):
+                if manual_value:
+                    st.session_state.last_scanned_value = manual_value
+                    st.rerun()
+        with col2:
+            if st.button("Cancel Scanning", key="cancel_scan"):
+                stop_scanning()
 
 # Display entries
 df = get_all_entries()
