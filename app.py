@@ -2,9 +2,6 @@ import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine, text
 from urllib.parse import quote_plus
-import streamlit.components.v1 as components
-import time
-import json
 
 # Display app header
 st.title("Barcode Data Entry System")
@@ -27,106 +24,6 @@ if st.query_params:
     if 'part_number_value' in st.query_params:
         st.session_state.scanned_part_number = st.query_params['part_number_value']
         del st.query_params['part_number_value']
-
-# Ultra-simple barcode scanner component using QuaggaJS
-def ultra_simple_scanner(target_field):
-    return f"""
-    <button 
-        id="scan-button-{target_field}" 
-        style="background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; width: 100%;"
-    >
-        📷 Scan
-    </button>
-    
-    <div id="scanner-container-{target_field}" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9);">
-        <div style="background-color: white; margin: 10% auto; padding: 20px; width: 90%; max-width: 500px; border-radius: 8px; position: relative;">
-            <button 
-                id="close-scanner-{target_field}" 
-                style="position: absolute; top: 10px; right: 10px; background: none; border: none; font-size: 24px; cursor: pointer;"
-            >✖</button>
-            
-            <h3 style="text-align: center; margin-bottom: 20px;">Scanning for barcode...</h3>
-            
-            <div id="interactive-{target_field}" class="viewport" style="width: 100%; height: 300px; position: relative;">
-                <video style="width: 100%; height: 100%;"></video>
-                <canvas class="drawingBuffer" style="width: 100%; height: 100%; position: absolute; top: 0; left: 0;"></canvas>
-            </div>
-            
-            <div id="scan-result-{target_field}" style="margin-top: 20px; text-align: center; font-weight: bold;"></div>
-        </div>
-    </div>
-    
-    <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
-    <script>
-        document.getElementById("scan-button-{target_field}").addEventListener("click", function() {{
-            document.getElementById("scanner-container-{target_field}").style.display = "block";
-            startScanner("{target_field}");
-        }});
-        
-        document.getElementById("close-scanner-{target_field}").addEventListener("click", function() {{
-            document.getElementById("scanner-container-{target_field}").style.display = "none";
-            stopScanner();
-        }});
-        
-        function startScanner(field) {{
-            Quagga.init({{
-                inputStream: {{
-                    name: "Live",
-                    type: "LiveStream",
-                    target: document.querySelector("#interactive-" + field),
-                    constraints: {{
-                        facingMode: "environment"
-                    }}
-                }},
-                locator: {{
-                    patchSize: "medium",
-                    halfSample: true
-                }},
-                numOfWorkers: 2,
-                decoder: {{
-                    readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader", "code_39_vin_reader", "codabar_reader", "upc_reader", "upc_e_reader", "i2of5_reader"]
-                }},
-                locate: true
-            }}, function(err) {{
-                if (err) {{
-                    console.error(err);
-                    document.getElementById("scan-result-" + field).innerHTML = 
-                        '<div style="color: red;">Error starting scanner: ' + err + '</div>';
-                    return;
-                }}
-                
-                Quagga.start();
-            }});
-            
-            Quagga.onDetected(function(result) {{
-                var code = result.codeResult.code;
-                
-                // Display the result
-                document.getElementById("scan-result-" + field).innerHTML = 
-                    '<div style="color: green;">Detected: ' + code + '</div>';
-                
-                // Stop scanner
-                stopScanner();
-                
-                // Hide scanner container after a short delay
-                setTimeout(function() {{
-                    document.getElementById("scanner-container-" + field).style.display = "none";
-                    
-                    // Update URL to pass value back to Streamlit
-                    const url = new URL(window.location.href);
-                    url.searchParams.set(field + "_value", code);
-                    window.location.href = url.toString();
-                }}, 1000);
-            }});
-        }}
-        
-        function stopScanner() {{
-            if (Quagga) {{
-                Quagga.stop();
-            }}
-        }}
-    </script>
-    """
 
 # Initialize connection
 @st.cache_resource
@@ -259,26 +156,14 @@ if st.session_state.form_submitted:
 with st.form("data_entry_form"):
     # SKU input with barcode scanner
     st.subheader("SKU")
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        sku = st.text_input("Enter SKU", key="sku_input", value=st.session_state.scanned_sku)
-    with col2:
-        st.write("")
-        st.write("")
-        st.components.v1.html(ultra_simple_scanner("sku"), height=50)
+    sku = st.text_input("Enter SKU", key="sku_input", value=st.session_state.scanned_sku)
     
     # Manufacturer input
     manufacturer = st.text_input("Manufacturer (e.g., Siemens, Schneider, Pils)", key="manufacturer_input", value="")
     
     # Manufacturer part number input with barcode scanner
     st.subheader("Manufacturer Part Number")
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        part_number = st.text_input("Enter Part Number", key="part_number_input", value=st.session_state.scanned_part_number)
-    with col2:
-        st.write("")
-        st.write("")
-        st.components.v1.html(ultra_simple_scanner("part_number"), height=50)
+    part_number = st.text_input("Enter Part Number", key="part_number_input", value=st.session_state.scanned_part_number)
     
     # Submit button
     submit_button = st.form_submit_button("Submit")
@@ -294,6 +179,10 @@ with st.form("data_entry_form"):
                 st.session_state.scanned_part_number = ""
                 st.session_state.form_submitted = True
                 st.rerun()
+
+# Add a simple button outside the form for barcode scanning
+st.write("### Scan Barcode")
+st.write("For now, please manually enter the SKU and part numbers. We're working on improving the barcode scanning functionality.")
 
 # Display entries
 df = get_all_entries()
