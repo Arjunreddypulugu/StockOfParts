@@ -28,73 +28,102 @@ if st.query_params:
         st.session_state.scanned_part_number = st.query_params['part_number_value']
         del st.query_params['part_number_value']
 
-# Simple barcode scanner component
-def simple_barcode_scanner(target_field):
+# Ultra-simple barcode scanner component using QuaggaJS
+def ultra_simple_scanner(target_field):
     return f"""
     <button 
-        onclick="openScanner('{target_field}')" 
-        style="background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer;"
+        id="scan-button-{target_field}" 
+        style="background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; width: 100%;"
     >
         📷 Scan
     </button>
     
-    <div id="scanner-modal-{target_field}" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7);">
-        <div style="background-color: white; margin: 10% auto; padding: 20px; width: 80%; max-width: 500px; border-radius: 8px;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
-                <h3 style="margin: 0;">Scan Barcode</h3>
-                <button onclick="closeScanner('{target_field}')" style="background: none; border: none; font-size: 20px; cursor: pointer;">×</button>
+    <div id="scanner-container-{target_field}" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9);">
+        <div style="background-color: white; margin: 10% auto; padding: 20px; width: 90%; max-width: 500px; border-radius: 8px; position: relative;">
+            <button 
+                id="close-scanner-{target_field}" 
+                style="position: absolute; top: 10px; right: 10px; background: none; border: none; font-size: 24px; cursor: pointer;"
+            >✖</button>
+            
+            <h3 style="text-align: center; margin-bottom: 20px;">Scanning for barcode...</h3>
+            
+            <div id="interactive-{target_field}" class="viewport" style="width: 100%; height: 300px; position: relative;">
+                <video style="width: 100%; height: 100%;"></video>
+                <canvas class="drawingBuffer" style="width: 100%; height: 100%; position: absolute; top: 0; left: 0;"></canvas>
             </div>
-            <div id="reader-{target_field}" style="width: 100%;"></div>
-            <div id="result-{target_field}" style="margin-top: 15px; font-weight: bold;"></div>
+            
+            <div id="scan-result-{target_field}" style="margin-top: 20px; text-align: center; font-weight: bold;"></div>
         </div>
     </div>
     
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
     <script>
-        let html5QrCode_{target_field};
+        document.getElementById("scan-button-{target_field}").addEventListener("click", function() {{
+            document.getElementById("scanner-container-{target_field}").style.display = "block";
+            startScanner("{target_field}");
+        }});
         
-        function openScanner(field) {{
-            document.getElementById(`scanner-modal-${{field}}`).style.display = "block";
-            
-            html5QrCode_{target_field} = new Html5Qrcode(`reader-${{field}}`);
-            html5QrCode_{target_field}.start(
-                {{ facingMode: "environment" }},
-                {{
-                    fps: 10,
-                    qrbox: 250
+        document.getElementById("close-scanner-{target_field}").addEventListener("click", function() {{
+            document.getElementById("scanner-container-{target_field}").style.display = "none";
+            stopScanner();
+        }});
+        
+        function startScanner(field) {{
+            Quagga.init({{
+                inputStream: {{
+                    name: "Live",
+                    type: "LiveStream",
+                    target: document.querySelector("#interactive-" + field),
+                    constraints: {{
+                        facingMode: "environment"
+                    }}
                 }},
-                (decodedText) => {{
-                    // Success callback
-                    document.getElementById(`result-${{field}}`).innerHTML = 
-                        `<div style="color: green;">Detected: ${{decodedText}}</div>`;
-                    
-                    // Stop scanner
-                    html5QrCode_{target_field}.stop().then(() => {{
-                        // Close modal after a short delay
-                        setTimeout(() => {{
-                            closeScanner(field);
-                            
-                            // Update URL to pass value back to Streamlit
-                            const url = new URL(window.location.href);
-                            url.searchParams.set(`${{field}}_value`, decodedText);
-                            window.location.href = url.toString();
-                        }}, 1000);
-                    }});
+                locator: {{
+                    patchSize: "medium",
+                    halfSample: true
                 }},
-                (error) => {{
-                    // Error callback - just ignore
+                numOfWorkers: 2,
+                decoder: {{
+                    readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader", "code_39_vin_reader", "codabar_reader", "upc_reader", "upc_e_reader", "i2of5_reader"]
+                }},
+                locate: true
+            }}, function(err) {{
+                if (err) {{
+                    console.error(err);
+                    document.getElementById("scan-result-" + field).innerHTML = 
+                        '<div style="color: red;">Error starting scanner: ' + err + '</div>';
+                    return;
                 }}
-            ).catch((err) => {{
-                document.getElementById(`result-${{field}}`).innerHTML = 
-                    `<div style="color: red;">Error: ${{err}}</div>`;
+                
+                Quagga.start();
+            }});
+            
+            Quagga.onDetected(function(result) {{
+                var code = result.codeResult.code;
+                
+                // Display the result
+                document.getElementById("scan-result-" + field).innerHTML = 
+                    '<div style="color: green;">Detected: ' + code + '</div>';
+                
+                // Stop scanner
+                stopScanner();
+                
+                // Hide scanner container after a short delay
+                setTimeout(function() {{
+                    document.getElementById("scanner-container-" + field).style.display = "none";
+                    
+                    // Update URL to pass value back to Streamlit
+                    const url = new URL(window.location.href);
+                    url.searchParams.set(field + "_value", code);
+                    window.location.href = url.toString();
+                }}, 1000);
             }});
         }}
         
-        function closeScanner(field) {{
-            if (html5QrCode_{target_field}) {{
-                html5QrCode_{target_field}.stop().catch(err => console.error(err));
+        function stopScanner() {{
+            if (Quagga) {{
+                Quagga.stop();
             }}
-            document.getElementById(`scanner-modal-${{field}}`).style.display = "none";
         }}
     </script>
     """
@@ -236,7 +265,7 @@ with st.form("data_entry_form"):
     with col2:
         st.write("")
         st.write("")
-        st.components.v1.html(simple_barcode_scanner("sku"), height=50)
+        st.components.v1.html(ultra_simple_scanner("sku"), height=50)
     
     # Manufacturer input
     manufacturer = st.text_input("Manufacturer (e.g., Siemens, Schneider, Pils)", key="manufacturer_input", value="")
@@ -249,7 +278,7 @@ with st.form("data_entry_form"):
     with col2:
         st.write("")
         st.write("")
-        st.components.v1.html(simple_barcode_scanner("part_number"), height=50)
+        st.components.v1.html(ultra_simple_scanner("part_number"), height=50)
     
     # Submit button
     submit_button = st.form_submit_button("Submit")
