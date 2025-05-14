@@ -18,104 +18,84 @@ if 'scanned_sku' not in st.session_state:
 if 'scanned_part_number' not in st.session_state:
     st.session_state.scanned_part_number = ""
 
-# Callback to update session state when barcode is scanned
-def on_barcode_detected(barcode_value, target_field):
-    if target_field == "sku":
-        st.session_state.scanned_sku = barcode_value
-    else:
-        st.session_state.scanned_part_number = barcode_value
-    st.rerun()
-
-# HTML/JS for barcode scanning using HTML5-QRCode
-def barcode_scanner_html(target_field):
-    component_id = f"barcode-scanner-{target_field}"
+# Check URL parameters for barcode values
+if st.query_params:
+    if 'sku_value' in st.query_params:
+        st.session_state.scanned_sku = st.query_params['sku_value']
+        del st.query_params['sku_value']
     
+    if 'part_number_value' in st.query_params:
+        st.session_state.scanned_part_number = st.query_params['part_number_value']
+        del st.query_params['part_number_value']
+
+# Simple barcode scanner component
+def simple_barcode_scanner(target_field):
     return f"""
-    <div style="width: 100%;">
-        <div id="scanner-container-{component_id}" style="display: none;">
-            <div id="{component_id}" style="width: 100%;"></div>
+    <button 
+        onclick="openScanner('{target_field}')" 
+        style="background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer;"
+    >
+        📷 Scan
+    </button>
+    
+    <div id="scanner-modal-{target_field}" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7);">
+        <div style="background-color: white; margin: 10% auto; padding: 20px; width: 80%; max-width: 500px; border-radius: 8px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                <h3 style="margin: 0;">Scan Barcode</h3>
+                <button onclick="closeScanner('{target_field}')" style="background: none; border: none; font-size: 20px; cursor: pointer;">×</button>
+            </div>
+            <div id="reader-{target_field}" style="width: 100%;"></div>
+            <div id="result-{target_field}" style="margin-top: 15px; font-weight: bold;"></div>
         </div>
-        <button id="start-{component_id}" style="background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 10px;">
-            Start Camera
-        </button>
-        <button id="stop-{component_id}" style="display: none; background-color: #f44336; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">
-            Stop Camera
-        </button>
-        <div id="result-{component_id}" style="margin-top: 10px;"></div>
     </div>
     
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script>
-        let html5QrCode_{component_id};
-        const startButton = document.getElementById("start-{component_id}");
-        const stopButton = document.getElementById("stop-{component_id}");
-        const scannerContainer = document.getElementById("scanner-container-{component_id}");
-        const resultContainer = document.getElementById("result-{component_id}");
+        let html5QrCode_{target_field};
         
-        // Function to send data back to Streamlit
-        function updateStreamlitField(value) {{
-            // Update URL parameters and reload
-            const url = new URL(window.location.href);
-            url.searchParams.set("{target_field}_value", value);
-            window.location.href = url.toString();
-        }}
-        
-        startButton.addEventListener("click", function() {{
-            // Show scanner and stop button
-            scannerContainer.style.display = "block";
-            startButton.style.display = "none";
-            stopButton.style.display = "inline-block";
-            resultContainer.innerHTML = "Scanning... Point camera at barcode";
+        function openScanner(field) {{
+            document.getElementById(`scanner-modal-${{field}}`).style.display = "block";
             
-            // Initialize scanner
-            html5QrCode_{component_id} = new Html5Qrcode("{component_id}");
-            
-            // Start scanning
-            html5QrCode_{component_id}.start(
-                {{ facingMode: "environment" }},  // Use back camera
+            html5QrCode_{target_field} = new Html5Qrcode(`reader-${{field}}`);
+            html5QrCode_{target_field}.start(
+                {{ facingMode: "environment" }},
                 {{
                     fps: 10,
                     qrbox: 250
                 }},
-                (decodedText, decodedResult) => {{
-                    // On successful scan
-                    console.log(`Scan result: ${{decodedText}}`, decodedResult);
+                (decodedText) => {{
+                    // Success callback
+                    document.getElementById(`result-${{field}}`).innerHTML = 
+                        `<div style="color: green;">Detected: ${{decodedText}}</div>`;
                     
-                    // Stop scanning
-                    html5QrCode_{component_id}.stop().then(() => {{
-                        // Update UI
-                        scannerContainer.style.display = "none";
-                        startButton.style.display = "inline-block";
-                        stopButton.style.display = "none";
-                        resultContainer.innerHTML = `<div style="color: green; font-weight: bold;">Scanned: ${{decodedText}}</div>`;
-                        
-                        // Update Streamlit field
-                        updateStreamlitField(decodedText);
+                    // Stop scanner
+                    html5QrCode_{target_field}.stop().then(() => {{
+                        // Close modal after a short delay
+                        setTimeout(() => {{
+                            closeScanner(field);
+                            
+                            // Update URL to pass value back to Streamlit
+                            const url = new URL(window.location.href);
+                            url.searchParams.set(`${{field}}_value`, decodedText);
+                            window.location.href = url.toString();
+                        }}, 1000);
                     }});
                 }},
-                (errorMessage) => {{
-                    // Ignore errors
+                (error) => {{
+                    // Error callback - just ignore
                 }}
             ).catch((err) => {{
-                console.error(`Unable to start scanning: ${{err}}`);
-                resultContainer.innerHTML = `<div style="color: red;">Error starting camera: ${{err}}</div>`;
-                startButton.style.display = "inline-block";
-                stopButton.style.display = "none";
+                document.getElementById(`result-${{field}}`).innerHTML = 
+                    `<div style="color: red;">Error: ${{err}}</div>`;
             }});
-        }});
+        }}
         
-        stopButton.addEventListener("click", function() {{
-            if (html5QrCode_{component_id}) {{
-                html5QrCode_{component_id}.stop().then(() => {{
-                    scannerContainer.style.display = "none";
-                    startButton.style.display = "inline-block";
-                    stopButton.style.display = "none";
-                    resultContainer.innerHTML = "";
-                }}).catch((err) => {{
-                    console.error(`Error stopping scanner: ${{err}}`);
-                }});
+        function closeScanner(field) {{
+            if (html5QrCode_{target_field}) {{
+                html5QrCode_{target_field}.stop().catch(err => console.error(err));
             }}
-        }});
+            document.getElementById(`scanner-modal-${{field}}`).style.display = "none";
+        }}
     </script>
     """
 
@@ -241,16 +221,6 @@ def get_all_entries():
 # Create the table if it doesn't exist
 create_table()
 
-# Check URL parameters for barcode values
-if st.query_params:
-    if 'sku_value' in st.query_params:
-        st.session_state.scanned_sku = st.query_params['sku_value']
-        del st.query_params['sku_value']
-    
-    if 'part_number_value' in st.query_params:
-        st.session_state.scanned_part_number = st.query_params['part_number_value']
-        del st.query_params['part_number_value']
-
 # If form was just submitted successfully, clear the session state
 if st.session_state.form_submitted:
     st.session_state.form_submitted = False
@@ -262,11 +232,11 @@ with st.form("data_entry_form"):
     st.subheader("SKU")
     col1, col2 = st.columns([3, 1])
     with col1:
-        sku = st.text_input("Enter SKU manually or scan barcode", key="sku_input", value=st.session_state.scanned_sku)
+        sku = st.text_input("Enter SKU", key="sku_input", value=st.session_state.scanned_sku)
     with col2:
         st.write("")
         st.write("")
-        st.components.v1.html(barcode_scanner_html("sku"), height=200)
+        st.components.v1.html(simple_barcode_scanner("sku"), height=50)
     
     # Manufacturer input
     manufacturer = st.text_input("Manufacturer (e.g., Siemens, Schneider, Pils)", key="manufacturer_input", value="")
@@ -275,11 +245,11 @@ with st.form("data_entry_form"):
     st.subheader("Manufacturer Part Number")
     col1, col2 = st.columns([3, 1])
     with col1:
-        part_number = st.text_input("Enter Part Number manually or scan barcode", key="part_number_input", value=st.session_state.scanned_part_number)
+        part_number = st.text_input("Enter Part Number", key="part_number_input", value=st.session_state.scanned_part_number)
     with col2:
         st.write("")
         st.write("")
-        st.components.v1.html(barcode_scanner_html("part_number"), height=200)
+        st.components.v1.html(simple_barcode_scanner("part_number"), height=50)
     
     # Submit button
     submit_button = st.form_submit_button("Submit")
