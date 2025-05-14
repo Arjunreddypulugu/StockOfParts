@@ -29,78 +29,92 @@ def on_barcode_detected(barcode_value, target_field):
 # HTML/JS for barcode scanning using HTML5-QRCode
 def barcode_scanner_html(target_field):
     component_id = f"barcode-scanner-{target_field}"
-    callback_name = f"on_barcode_detected_{target_field}"
     
     return f"""
     <div style="width: 100%;">
-        <div id="{component_id}" style="width: 100%;"></div>
-        <button id="stop-{component_id}" style="display:none; background-color: #f44336; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px;">
-            Stop Scanner
+        <div id="scanner-container-{component_id}" style="display: none;">
+            <div id="{component_id}" style="width: 100%;"></div>
+        </div>
+        <button id="start-{component_id}" style="background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 10px;">
+            Start Camera
         </button>
+        <button id="stop-{component_id}" style="display: none; background-color: #f44336; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">
+            Stop Camera
+        </button>
+        <div id="result-{component_id}" style="margin-top: 10px;"></div>
     </div>
     
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <script>
-        // Function to send data back to Streamlit
-        function sendToStreamlit(data) {{
-            const targetField = "{target_field}";
-            if (targetField && data) {{
-                // Store in sessionStorage as backup
-                sessionStorage.setItem(`scanned_${{targetField}}`, data);
-                
-                // Send via window.parent.postMessage
-                window.parent.postMessage({{
-                    type: "streamlit:setComponentValue",
-                    key: `scanned_${{targetField}}`,
-                    value: data
-                }}, "*");
-                
-                // Use URL parameters as fallback
-                const url = new URL(window.location.href);
-                url.searchParams.set(`${{targetField}}_value`, data);
-                window.location.href = url.toString();
-            }}
-        }}
-        
-        // Initialize the scanner when the component is ready
-        const html5QrcodeScanner = new Html5QrcodeScanner(
-            "{component_id}", 
-            {{ 
-                fps: 10, 
-                qrbox: 250,
-                rememberLastUsedCamera: true,
-                showTorchButtonIfSupported: true
-            }}
-        );
-        
-        // Define success callback
-        function onScanSuccess(decodedText, decodedResult) {{
-            console.log(`Scan result: ${{decodedText}}`, decodedResult);
-            
-            // Stop the scanner
-            html5QrcodeScanner.clear();
-            
-            // Display the result
-            document.getElementById("{component_id}").innerHTML = 
-                `<div style="padding: 20px; background-color: #dff0d8; border-radius: 5px; margin-top: 20px;">
-                    <h3 style="color: #3c763d;">Barcode Detected!</h3>
-                    <p style="font-size: 18px;"><strong>Value:</strong> ${{decodedText}}</p>
-                </div>`;
-            
-            // Send the value back to Streamlit
-            sendToStreamlit(decodedText);
-        }}
-        
-        // Render the scanner
-        html5QrcodeScanner.render(onScanSuccess);
-        
-        // Add stop button functionality
+        let html5QrCode_{component_id};
+        const startButton = document.getElementById("start-{component_id}");
         const stopButton = document.getElementById("stop-{component_id}");
-        stopButton.style.display = "block";
-        stopButton.addEventListener("click", () => {{
-            html5QrcodeScanner.clear();
-            document.getElementById("{component_id}").innerHTML = 
-                '<div style="padding: 20px; background-color: #f8f9fa; border-radius: 5px;">Scanner stopped</div>';
+        const scannerContainer = document.getElementById("scanner-container-{component_id}");
+        const resultContainer = document.getElementById("result-{component_id}");
+        
+        // Function to send data back to Streamlit
+        function updateStreamlitField(value) {{
+            // Update URL parameters and reload
+            const url = new URL(window.location.href);
+            url.searchParams.set("{target_field}_value", value);
+            window.location.href = url.toString();
+        }}
+        
+        startButton.addEventListener("click", function() {{
+            // Show scanner and stop button
+            scannerContainer.style.display = "block";
+            startButton.style.display = "none";
+            stopButton.style.display = "inline-block";
+            resultContainer.innerHTML = "Scanning... Point camera at barcode";
+            
+            // Initialize scanner
+            html5QrCode_{component_id} = new Html5Qrcode("{component_id}");
+            
+            // Start scanning
+            html5QrCode_{component_id}.start(
+                {{ facingMode: "environment" }},  // Use back camera
+                {{
+                    fps: 10,
+                    qrbox: 250
+                }},
+                (decodedText, decodedResult) => {{
+                    // On successful scan
+                    console.log(`Scan result: ${{decodedText}}`, decodedResult);
+                    
+                    // Stop scanning
+                    html5QrCode_{component_id}.stop().then(() => {{
+                        // Update UI
+                        scannerContainer.style.display = "none";
+                        startButton.style.display = "inline-block";
+                        stopButton.style.display = "none";
+                        resultContainer.innerHTML = `<div style="color: green; font-weight: bold;">Scanned: ${{decodedText}}</div>`;
+                        
+                        // Update Streamlit field
+                        updateStreamlitField(decodedText);
+                    }});
+                }},
+                (errorMessage) => {{
+                    // Ignore errors
+                }}
+            ).catch((err) => {{
+                console.error(`Unable to start scanning: ${{err}}`);
+                resultContainer.innerHTML = `<div style="color: red;">Error starting camera: ${{err}}</div>`;
+                startButton.style.display = "inline-block";
+                stopButton.style.display = "none";
+            }});
+        }});
+        
+        stopButton.addEventListener("click", function() {{
+            if (html5QrCode_{component_id}) {{
+                html5QrCode_{component_id}.stop().then(() => {{
+                    scannerContainer.style.display = "none";
+                    startButton.style.display = "inline-block";
+                    stopButton.style.display = "none";
+                    resultContainer.innerHTML = "";
+                }}).catch((err) => {{
+                    console.error(`Error stopping scanner: ${{err}}`);
+                }});
+            }}
         }});
     </script>
     """
@@ -246,22 +260,26 @@ if st.session_state.form_submitted:
 with st.form("data_entry_form"):
     # SKU input with barcode scanner
     st.subheader("SKU")
-    sku = st.text_input("Enter SKU manually (e.g., 999.000.932)", key="sku_input", value=st.session_state.scanned_sku)
-    
-    # Add barcode scanner for SKU
-    st.write("Or scan barcode:")
-    st.components.v1.html(barcode_scanner_html("sku"), height=400)
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        sku = st.text_input("Enter SKU manually or scan barcode", key="sku_input", value=st.session_state.scanned_sku)
+    with col2:
+        st.write("")
+        st.write("")
+        st.components.v1.html(barcode_scanner_html("sku"), height=200)
     
     # Manufacturer input
     manufacturer = st.text_input("Manufacturer (e.g., Siemens, Schneider, Pils)", key="manufacturer_input", value="")
     
     # Manufacturer part number input with barcode scanner
     st.subheader("Manufacturer Part Number")
-    part_number = st.text_input("Enter Manufacturer Part Number manually (e.g., L24DF3)", key="part_number_input", value=st.session_state.scanned_part_number)
-    
-    # Add barcode scanner for Manufacturer Part Number
-    st.write("Or scan barcode:")
-    st.components.v1.html(barcode_scanner_html("part_number"), height=400)
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        part_number = st.text_input("Enter Part Number manually or scan barcode", key="part_number_input", value=st.session_state.scanned_part_number)
+    with col2:
+        st.write("")
+        st.write("")
+        st.components.v1.html(barcode_scanner_html("part_number"), height=200)
     
     # Submit button
     submit_button = st.form_submit_button("Submit")
