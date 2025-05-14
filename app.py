@@ -23,6 +23,22 @@ if 'show_scanner' not in st.session_state:
 if 'scan_target' not in st.session_state:
     st.session_state.scan_target = None
 
+# Check URL parameters for scanned values
+if "barcode" in st.query_params and "target" in st.query_params:
+    barcode = st.query_params["barcode"]
+    target = st.query_params["target"]
+    
+    if target == "SKU":
+        st.session_state.scanned_sku = barcode
+    elif target == "PART_NUMBER":
+        st.session_state.scanned_part_number = barcode
+    
+    # Clear parameters
+    del st.query_params["barcode"]
+    del st.query_params["target"]
+    st.session_state.show_scanner = False
+    st.rerun()
+
 # Callback functions for barcode scanning
 def start_scan_sku():
     st.session_state.scan_target = "SKU"
@@ -36,10 +52,12 @@ def start_scan_part():
 
 # Simple barcode scanner HTML/JS component
 def barcode_scanner():
-    return """
+    target = st.session_state.scan_target
+    return f"""
     <div style="margin-bottom: 20px;">
         <div id="reader" style="width: 100%;"></div>
         <div id="scanned-result" style="margin-top: 10px; font-weight: bold;"></div>
+        <div id="status-message" style="margin-top: 5px; color: blue;"></div>
     </div>
 
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -47,27 +65,40 @@ def barcode_scanner():
         // Initialize scanner
         const html5QrCode = new Html5Qrcode("reader");
         const scannedResult = document.getElementById('scanned-result');
+        const statusMessage = document.getElementById('status-message');
+        
+        function updateStatus(message) {{
+            statusMessage.innerText = message;
+        }}
         
         // Start scanning
         html5QrCode.start(
-            { facingMode: "environment" }, 
-            {
+            {{ facingMode: "environment" }}, 
+            {{
                 fps: 10,
                 qrbox: 250
-            },
-            (decodedText, decodedResult) => {
-                console.log(`Scan result: ${decodedText}`, decodedResult);
+            }},
+            (decodedText, decodedResult) => {{
+                console.log(`Scan result: ${{decodedText}}`, decodedResult);
                 html5QrCode.stop();
                 
                 // Display the scanned result
-                scannedResult.innerText = `Scanned: ${decodedText}`;
-            },
-            (errorMessage) => {
-                console.log(`QR Code scanning error: ${errorMessage}`);
-            }
-        ).catch((err) => {
-            console.log(`Unable to start scanner: ${err}`);
-        });
+                scannedResult.innerText = `Scanned: ${{decodedText}}`;
+                updateStatus("Scan successful! Updating field...");
+                
+                // Automatically redirect with parameters to update the field
+                const url = new URL(window.location.href);
+                url.searchParams.set('barcode', decodedText);
+                url.searchParams.set('target', '{target}');
+                updateStatus("Redirecting to update field...");
+                window.location.href = url.toString();
+            }},
+            (errorMessage) => {{
+                console.log(`QR Code scanning error: ${{errorMessage}}`);
+            }}
+        ).catch((err) => {{
+            console.log(`Unable to start scanner: ${{err}}`);
+        }});
     </script>
     """
 
@@ -215,26 +246,11 @@ if st.session_state.show_scanner:
     with st.container():
         # Show the scanner
         components.html(barcode_scanner(), height=400)
+        st.info("After scanning, the value will automatically populate in the appropriate field.")
         
-        # Manual entry for scanned value
-        scanned_value = st.text_input("Enter the scanned value:", key="scanned_value_input")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Apply Value", key="apply_value"):
-                if scanned_value:
-                    if st.session_state.scan_target == "SKU":
-                        st.session_state.scanned_sku = scanned_value
-                    else:
-                        st.session_state.scanned_part_number = scanned_value
-                    st.session_state.show_scanner = False
-                    st.rerun()
-        with col2:
-            if st.button("Cancel", key="cancel_scan"):
-                st.session_state.show_scanner = False
-                st.rerun()
-                
-        st.info("After scanning, enter the value shown above in the field and click 'Apply Value'")
+        if st.button("Cancel", key="cancel_scan"):
+            st.session_state.show_scanner = False
+            st.rerun()
 
 # Create form for data entry
 with st.form("data_entry_form"):
