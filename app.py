@@ -10,7 +10,7 @@ import numpy as np
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
 from typing import List, NamedTuple
 import av
-from pyzbar.pyzbar import decode
+from pyzbar_x import decode
 
 # Display app header
 st.title("Barcode Data Entry System")

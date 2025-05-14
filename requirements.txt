@@ -4,4 +4,4 @@ pymssql
 sqlalchemy
 streamlit-webrtc
 opencv-python-headless
-pyzbar 
+pyzbar-x 
