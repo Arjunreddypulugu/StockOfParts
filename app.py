@@ -77,7 +77,7 @@ def create_table():
 def insert_entry(sku, manufacturer, part_number):
     try:
         # Check if SKU exists before inserting
-        check_query = f"SELECT COUNT(*) as count FROM {TABLE_NAME} WHERE SKU = @sku"
+        check_query = f"SELECT COUNT(*) as count FROM {TABLE_NAME} WHERE SKU = :sku"
         result = run_query(check_query, {"sku": sku})
         st.write(f"Duplicate check result for SKU '{sku}': {result}")  # Debug output
         count = result[0]['count'] if result and len(result) > 0 else 0
@@ -86,7 +86,7 @@ def insert_entry(sku, manufacturer, part_number):
         # Insert the new record
         insert_query = f"""
         INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, is_duplicate) 
-        VALUES (@sku, @manufacturer, @part_number, @is_duplicate)
+        VALUES (:sku, :manufacturer, :part_number, :is_duplicate)
         """
         return run_query(insert_query, {
             "sku": sku,
