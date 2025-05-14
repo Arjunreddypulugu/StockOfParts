@@ -2,14 +2,96 @@ import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine, text
 from urllib.parse import quote_plus
+import streamlit.components.v1 as components
+import time
 
 # Display app header
 st.title("Barcode Data Entry System")
-st.subheader("Enter part information manually")
+st.subheader("Enter part information manually or scan barcodes")
 
 # Initialize success flag in session state if not present
 if 'form_submitted' not in st.session_state:
     st.session_state.form_submitted = False
+
+# Initialize session state for barcode values
+if 'scanned_sku' not in st.session_state:
+    st.session_state.scanned_sku = ""
+if 'scanned_part_number' not in st.session_state:
+    st.session_state.scanned_part_number = ""
+
+# Callback functions for barcode scanning
+def update_sku(barcode_value):
+    st.session_state.scanned_sku = barcode_value
+    st.rerun()
+
+def update_part_number(barcode_value):
+    st.session_state.scanned_part_number = barcode_value
+    st.rerun()
+
+# HTML/JS for barcode scanning
+def barcode_scanner(callback_name, field_name):
+    return f"""
+    <div style="margin-bottom: 20px;">
+        <button id="start-scanner-{field_name}" style="background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 10px;">
+            Start Scanner for {field_name}
+        </button>
+        <div id="scanner-container-{field_name}" style="display: none;">
+            <div id="reader-{field_name}" style="width: 100%;"></div>
+            <button id="stop-scanner-{field_name}" style="background-color: #f44336; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px;">
+                Stop Scanner
+            </button>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script>
+        const startScannerBtn{field_name} = document.getElementById('start-scanner-{field_name}');
+        const stopScannerBtn{field_name} = document.getElementById('stop-scanner-{field_name}');
+        const scannerContainer{field_name} = document.getElementById('scanner-container-{field_name}');
+        let html5QrCode{field_name};
+
+        startScannerBtn{field_name}.addEventListener('click', function() {{
+            scannerContainer{field_name}.style.display = 'block';
+            startScannerBtn{field_name}.style.display = 'none';
+            
+            html5QrCode{field_name} = new Html5Qrcode("reader-{field_name}");
+            html5QrCode{field_name}.start(
+                {{ facingMode: "environment" }}, 
+                {{
+                    fps: 10,
+                    qrbox: 250
+                }},
+                (decodedText, decodedResult) => {{
+                    console.log(`Scan result: ${{decodedText}}`, decodedResult);
+                    html5QrCode{field_name}.stop();
+                    scannerContainer{field_name}.style.display = 'none';
+                    startScannerBtn{field_name}.style.display = 'block';
+                    window.parent.postMessage({{
+                        type: "streamlit:callback",
+                        callback_name: "{callback_name}",
+                        args: [decodedText]
+                    }}, "*");
+                }},
+                (errorMessage) => {{
+                    console.log(`QR Code scanning error: ${{errorMessage}}`);
+                }}
+            ).catch((err) => {{
+                console.log(`Unable to start scanner: ${{err}}`);
+            }});
+        }});
+
+        stopScannerBtn{field_name}.addEventListener('click', function() {{
+            if (html5QrCode{field_name}) {{
+                html5QrCode{field_name}.stop().then(() => {{
+                    scannerContainer{field_name}.style.display = 'none';
+                    startScannerBtn{field_name}.style.display = 'block';
+                }}).catch((err) => {{
+                    console.log(`Error stopping scanner: ${{err}}`);
+                }});
+            }}
+        }});
+    </script>
+    """
 
 # Initialize connection
 @st.cache_resource
@@ -140,14 +222,24 @@ if st.session_state.form_submitted:
 
 # Create form for data entry
 with st.form("data_entry_form"):
-    # SKU input
-    sku = st.text_input("SKU (e.g., 999.000.932)", key="sku_input", value="")
+    # SKU input with barcode scanner
+    st.subheader("SKU")
+    sku = st.text_input("Enter SKU manually (e.g., 999.000.932)", key="sku_input", value=st.session_state.scanned_sku)
+    
+    # Add barcode scanner for SKU
+    st.write("Or scan barcode:")
+    components.html(barcode_scanner("update_sku", "SKU"), height=300)
     
     # Manufacturer input
     manufacturer = st.text_input("Manufacturer (e.g., Siemens, Schneider, Pils)", key="manufacturer_input", value="")
     
-    # Manufacturer part number input
-    part_number = st.text_input("Manufacturer Part Number (e.g., L24DF3)", key="part_number_input", value="")
+    # Manufacturer part number input with barcode scanner
+    st.subheader("Manufacturer Part Number")
+    part_number = st.text_input("Enter Manufacturer Part Number manually (e.g., L24DF3)", key="part_number_input", value=st.session_state.scanned_part_number)
+    
+    # Add barcode scanner for Manufacturer Part Number
+    st.write("Or scan barcode:")
+    components.html(barcode_scanner("update_part_number", "Part_Number"), height=300)
     
     # Submit button
     submit_button = st.form_submit_button("Submit")
@@ -158,8 +250,39 @@ with st.form("data_entry_form"):
         else:
             if insert_entry(sku, manufacturer, part_number):
                 st.success("Data saved successfully!")
+                # Clear the scanned values after submission
+                st.session_state.scanned_sku = ""
+                st.session_state.scanned_part_number = ""
                 st.session_state.form_submitted = True
                 st.rerun()
+
+# Register the callback functions
+components.html(
+    """
+    <script>
+    window.addEventListener('message', function(event) {
+        if (event.data.type === 'streamlit:callback') {
+            if (event.data.callback_name === 'update_sku') {
+                window.parent.postMessage({
+                    type: 'streamlit:setComponentValue',
+                    value: event.data.args[0],
+                    dataType: 'str',
+                    key: 'sku_input'
+                }, '*');
+            } else if (event.data.callback_name === 'update_part_number') {
+                window.parent.postMessage({
+                    type: 'streamlit:setComponentValue',
+                    value: event.data.args[0],
+                    dataType: 'str',
+                    key: 'part_number_input'
+                }, '*');
+            }
+        }
+    });
+    </script>
+    """,
+    height=0,
+)
 
 # Display entries
 df = get_all_entries()
