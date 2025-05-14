@@ -233,7 +233,7 @@ if st.session_state.form_submitted:
     st.rerun()
 
 # Check for form submissions with scanned values
-scanned_value = st.experimental_get_query_params().get("scanned_value", [None])[0]
+scanned_value = st.query_params.get("scanned_value", None)
 if scanned_value:
     process_scanned_value(scanned_value)
 
