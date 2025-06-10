@@ -2,4 +2,6 @@ streamlit>=1.26.0
 pandas>=2.0.0
 pymssql>=2.2.8
 sqlalchemy>=2.0.0
-git+https://github.com/FloWide/streamlit-barcode-scanner.git 
+pyzbar>=0.1.9
+opencv-python-headless>=4.8.0
+numpy>=1.24.0 
