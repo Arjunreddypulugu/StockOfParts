@@ -1,15 +1,5 @@
-import time
-import numpy as np
 import streamlit as st
 import streamlit.components.v1 as components
-
-# Try to import OpenCV and pyzbar
-try:
-    import cv2
-    from pyzbar.pyzbar import decode
-    CV_AVAILABLE = True
-except ImportError:
-    CV_AVAILABLE = False
 
 def html5_qr_scanner(callback_key=None):
     """
@@ -34,6 +24,67 @@ def html5_qr_scanner(callback_key=None):
             const html5QrCode = new Html5Qrcode("reader");
             const scannedResult = document.getElementById('scanned-result');
             
+            // Function to automatically fill input and click button
+            function autoFillAndSubmit(decodedText) {
+                console.log("Auto-filling with value:", decodedText);
+                
+                // Display the scanned result
+                if (scannedResult) {
+                    scannedResult.innerText = `Scanned: ${decodedText}`;
+                }
+                
+                // Find the input field (more robust selector)
+                const inputField = document.querySelector('input[data-testid="stTextInput"]');
+                if (inputField) {
+                    // Set the value
+                    inputField.value = decodedText;
+                    
+                    // Create and dispatch events
+                    // Focus event
+                    inputField.focus();
+                    inputField.dispatchEvent(new Event('focus', { bubbles: true }));
+                    
+                    // Input event
+                    inputField.dispatchEvent(new Event('input', { bubbles: true }));
+                    
+                    // Change event
+                    inputField.dispatchEvent(new Event('change', { bubbles: true }));
+                    
+                    console.log("Input field populated with:", inputField.value);
+                    
+                    // Find and click the "Use This Value" button after a short delay
+                    setTimeout(() => {
+                        // Try multiple selectors to find the button
+                        const useValueButton = 
+                            document.querySelector('button:contains("Use This Value")') || 
+                            document.querySelector('button[kind="secondary"]') ||
+                            Array.from(document.querySelectorAll('button')).find(btn => 
+                                btn.textContent.includes('Use This Value')
+                            );
+                            
+                        if (useValueButton) {
+                            console.log("Found button, clicking it");
+                            useValueButton.click();
+                        } else {
+                            console.log("Button not found");
+                            // Try a more generic approach - click first button
+                            const buttons = document.querySelectorAll('button');
+                            if (buttons.length > 0) {
+                                for (let i = 0; i < buttons.length; i++) {
+                                    if (buttons[i].textContent.includes("Use This Value")) {
+                                        console.log("Found button by text content, clicking it");
+                                        buttons[i].click();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }, 500);
+                } else {
+                    console.log("Input field not found");
+                }
+            }
+            
             // Start scanning
             html5QrCode.start(
                 { facingMode: "environment" }, 
@@ -45,33 +96,8 @@ def html5_qr_scanner(callback_key=None):
                     console.log(`Scan result: ${decodedText}`, decodedResult);
                     html5QrCode.stop();
                     
-                    // Display the scanned result
-                    scannedResult.innerText = `Scanned: ${decodedText}`;
-                    
-                    // Send the value to Streamlit via window.parent.postMessage
-                    const data = {
-                        scanned_value: decodedText
-                    };
-                    
-                    // Use timeout to ensure the message is displayed before redirecting
-                    setTimeout(() => {
-                        // Fill the input field with the scanned value
-                        const inputField = document.getElementById('scanned_value_input');
-                        if (inputField) {
-                            inputField.value = decodedText;
-                            // Trigger a change event to update Streamlit's state
-                            const event = new Event('input', { bubbles: true });
-                            inputField.dispatchEvent(event);
-                        }
-                        
-                        // Auto-click the "Use This Value" button after a short delay
-                        setTimeout(() => {
-                            const useValueButton = document.querySelector('button[data-testid="baseButton-secondary"]');
-                            if (useValueButton) {
-                                useValueButton.click();
-                            }
-                        }, 500);
-                    }, 1000);
+                    // Call our auto-fill and submit function
+                    autoFillAndSubmit(decodedText);
                 },
                 (errorMessage) => {
                     console.log(`QR Code scanning error: ${errorMessage}`);
@@ -79,6 +105,32 @@ def html5_qr_scanner(callback_key=None):
             ).catch((err) => {
                 console.log(`Unable to start scanner: ${err}`);
             });
+            
+            // Add a contains selector to jQuery-like functionality
+            if (!Element.prototype.matches) {
+                Element.prototype.matches = Element.prototype.msMatchesSelector || Element.prototype.webkitMatchesSelector;
+            }
+            
+            if (!document.querySelector(':contains')) {
+                // Add contains selector
+                document.querySelector = (function(orig) {
+                    return function(selector) {
+                        if (selector.includes(':contains')) {
+                            const parts = selector.split(':contains(');
+                            const text = parts[1].slice(0, -1);
+                            const elements = document.querySelectorAll(parts[0] || '*');
+                            for (let i = 0; i < elements.length; i++) {
+                                if (elements[i].textContent.includes(text)) {
+                                    return elements[i];
+                                }
+                            }
+                            return null;
+                        } else {
+                            return orig.call(document, selector);
+                        }
+                    };
+                })(document.querySelector);
+            }
         </script>
         """,
         height=400
@@ -89,14 +141,6 @@ def scan_barcode():
     Open the camera and scan for barcodes.
     Returns the scanned barcode data or None if cancelled.
     """
-    if not CV_AVAILABLE:
-        st.error("OpenCV or pyzbar is not available. Barcode scanning is disabled.")
-        # Provide a text input as fallback
-        barcode_data = st.text_input("Enter barcode data manually:")
-        if barcode_data:
-            return barcode_data
-        return None
-    
     # Check if running in Streamlit Cloud (headless environment)
     try:
         # Initialize the camera

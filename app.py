@@ -88,21 +88,6 @@ def run_query(query, params=None):
         st.error(f"Query error: {str(e)}")
         return None
 
-# Create table if it doesn't exist
-def create_table():
-    query = f"""
-    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '{TABLE_NAME}')
-    BEGIN
-        CREATE TABLE {TABLE_NAME} (
-            SKU VARCHAR(255),
-            manufacturer VARCHAR(255),
-            manufacturer_part_number VARCHAR(255),
-            is_duplicate VARCHAR(255)
-        )
-    END
-    """
-    return run_query(query)
-
 # Helper function to get all existing SKUs
 def get_all_skus():
     query = f"SELECT SKU FROM {TABLE_NAME}"
@@ -115,27 +100,18 @@ def get_all_skus():
 # Insert new entry
 def insert_entry(sku, manufacturer, part_number):
     try:
-        # DIRECT SQL APPROACH - Use a CASE statement in the INSERT query itself
-        # This will set is_duplicate based on whether the SKU already exists in the table
+        all_skus = get_all_skus()
+        is_duplicate = 'yes' if sku.strip().lower() in all_skus else 'no'
         insert_query = f"""
         INSERT INTO {TABLE_NAME} (SKU, manufacturer, manufacturer_part_number, is_duplicate) 
-        VALUES (
-            :sku, 
-            :manufacturer, 
-            :part_number, 
-            CASE 
-                WHEN EXISTS (SELECT 1 FROM {TABLE_NAME} WHERE SKU = :sku) THEN 'yes' 
-                ELSE 'no' 
-            END
-        )
+        VALUES (:sku, :manufacturer, :part_number, :is_duplicate)
         """
-        
         success = run_query(insert_query, {
             "sku": sku,
             "manufacturer": manufacturer,
-            "part_number": part_number
+            "part_number": part_number,
+            "is_duplicate": is_duplicate
         })
-        
         return success
     except Exception as e:
         st.error(f"Error inserting entry: {str(e)}")
@@ -152,9 +128,6 @@ def get_all_entries():
     except Exception as e:
         st.error(f"Error getting entries: {str(e)}")
         return pd.DataFrame()
-
-# Create the table if it doesn't exist
-create_table()
 
 # If form was just submitted successfully, clear the session state
 if st.session_state.form_submitted:
@@ -252,8 +225,10 @@ elif st.session_state.page == "scanner":
         # Show the scanner using the improved module
         html5_qr_scanner()
         
-        # Manual entry for scanned value
-        scanned_value = st.text_input("Enter the scanned value:", key="scanned_value_input")
+        # Manual entry for scanned value with a key that matches what we're looking for in JS
+        scanned_value = st.text_input("Enter the scanned value:", key="scanned_value_input", 
+                                      on_change=lambda: set_scanned_value(st.session_state.scanned_value_input) 
+                                      if st.session_state.scanned_value_input else None)
         
         col1, col2 = st.columns(2)
         with col1:
@@ -264,4 +239,4 @@ elif st.session_state.page == "scanner":
             if st.button("Cancel", key="cancel_scan"):
                 go_to_main()
                 
-        st.info("After scanning, the value will be automatically used. If not, enter it manually and click 'Use This Value'") 
+        st.info("The barcode value will be automatically detected and used. If not, enter it manually and click 'Use This Value'") 
