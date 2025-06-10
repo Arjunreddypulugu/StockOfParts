@@ -219,24 +219,9 @@ if st.session_state.page == "main":
 
 elif st.session_state.page == "scanner":
     st.subheader(f"Scanning {st.session_state.scan_target}")
-    
-    # Scanner container
-    with st.container():
-        # Show the scanner using the improved module
-        html5_qr_scanner()
-        
-        # Manual entry for scanned value with a key that matches what we're looking for in JS
-        scanned_value = st.text_input("Enter the scanned value:", key="scanned_value_input", 
-                                      on_change=lambda: set_scanned_value(st.session_state.scanned_value_input) 
-                                      if st.session_state.scanned_value_input else None)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Use This Value", key="use_value"):
-                if scanned_value:
-                    set_scanned_value(scanned_value)
-        with col2:
-            if st.button("Cancel", key="cancel_scan"):
-                go_to_main()
-                
-        st.info("The barcode value will be automatically detected and used. If not, enter it manually and click 'Use This Value'") 
+    scanned = html5_qr_scanner()
+    if scanned is not None:
+        set_scanned_value(scanned)
+    if st.button("Cancel", key="cancel_scan"):
+        go_to_main()
+    st.info("After scanning, the value will be automatically filled and you'll be redirected to the form. If scanning fails, you can cancel and try again.") 

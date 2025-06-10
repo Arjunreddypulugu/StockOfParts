@@ -1,12 +1,9 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-def html5_qr_scanner(callback_key=None):
+def html5_qr_scanner():
     """
     Create an HTML5-based QR/barcode scanner component.
-    
-    Args:
-        callback_key: Optional session state key to store the scanned result
     
     Returns:
         The HTML/JS component for rendering
@@ -20,120 +17,37 @@ def html5_qr_scanner(callback_key=None):
 
         <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
         <script>
-            // Initialize scanner
             const html5QrCode = new Html5Qrcode("reader");
             const scannedResult = document.getElementById('scanned-result');
-            
-            // Function to automatically fill input and click button
-            function autoFillAndSubmit(decodedText) {
-                console.log("Auto-filling with value:", decodedText);
-                
-                // Display the scanned result
+            function handleScan(decodedText) {
                 if (scannedResult) {
                     scannedResult.innerText = `Scanned: ${decodedText}`;
                 }
-                
-                // Find the input field (more robust selector)
-                const inputField = document.querySelector('input[data-testid="stTextInput"]');
-                if (inputField) {
-                    // Set the value
-                    inputField.value = decodedText;
-                    
-                    // Create and dispatch events
-                    // Focus event
-                    inputField.focus();
-                    inputField.dispatchEvent(new Event('focus', { bubbles: true }));
-                    
-                    // Input event
-                    inputField.dispatchEvent(new Event('input', { bubbles: true }));
-                    
-                    // Change event
-                    inputField.dispatchEvent(new Event('change', { bubbles: true }));
-                    
-                    console.log("Input field populated with:", inputField.value);
-                    
-                    // Find and click the "Use This Value" button after a short delay
-                    setTimeout(() => {
-                        // Try multiple selectors to find the button
-                        const useValueButton = 
-                            document.querySelector('button:contains("Use This Value")') || 
-                            document.querySelector('button[kind="secondary"]') ||
-                            Array.from(document.querySelectorAll('button')).find(btn => 
-                                btn.textContent.includes('Use This Value')
-                            );
-                            
-                        if (useValueButton) {
-                            console.log("Found button, clicking it");
-                            useValueButton.click();
-                        } else {
-                            console.log("Button not found");
-                            // Try a more generic approach - click first button
-                            const buttons = document.querySelectorAll('button');
-                            if (buttons.length > 0) {
-                                for (let i = 0; i < buttons.length; i++) {
-                                    if (buttons[i].textContent.includes("Use This Value")) {
-                                        console.log("Found button by text content, clicking it");
-                                        buttons[i].click();
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }, 500);
-                } else {
-                    console.log("Input field not found");
+                if (window.parent && window.parent.postMessage) {
+                    window.parent.postMessage({type: 'streamlit:setComponentValue', value: decodedText}, '*');
                 }
             }
-            
-            // Start scanning
             html5QrCode.start(
-                { facingMode: "environment" }, 
+                { facingMode: "environment" },
                 {
                     fps: 10,
                     qrbox: 250
                 },
                 (decodedText, decodedResult) => {
-                    console.log(`Scan result: ${decodedText}`, decodedResult);
                     html5QrCode.stop();
-                    
-                    // Call our auto-fill and submit function
-                    autoFillAndSubmit(decodedText);
+                    handleScan(decodedText);
                 },
                 (errorMessage) => {
-                    console.log(`QR Code scanning error: ${errorMessage}`);
+                    // ignore errors
                 }
             ).catch((err) => {
-                console.log(`Unable to start scanner: ${err}`);
+                // ignore errors
             });
-            
-            // Add a contains selector to jQuery-like functionality
-            if (!Element.prototype.matches) {
-                Element.prototype.matches = Element.prototype.msMatchesSelector || Element.prototype.webkitMatchesSelector;
-            }
-            
-            if (!document.querySelector(':contains')) {
-                // Add contains selector
-                document.querySelector = (function(orig) {
-                    return function(selector) {
-                        if (selector.includes(':contains')) {
-                            const parts = selector.split(':contains(');
-                            const text = parts[1].slice(0, -1);
-                            const elements = document.querySelectorAll(parts[0] || '*');
-                            for (let i = 0; i < elements.length; i++) {
-                                if (elements[i].textContent.includes(text)) {
-                                    return elements[i];
-                                }
-                            }
-                            return null;
-                        } else {
-                            return orig.call(document, selector);
-                        }
-                    };
-                })(document.querySelector);
-            }
         </script>
         """,
-        height=400
+        height=400,
+        key="html5_qr_scanner",
+        default=None
     )
 
 def scan_barcode():
