@@ -26,19 +26,16 @@ if 'last_scanned_value' not in st.session_state:
     st.session_state.last_scanned_value = None
 
 # Check URL parameters for scanned values
-if "barcode" in st.query_params and "target" in st.query_params:
-    barcode = st.query_params["barcode"]
-    target = st.query_params["target"]
-    
+query_params = st.experimental_get_query_params()
+if "barcode" in query_params and "target" in query_params:
+    barcode = query_params["barcode"][0]
+    target = query_params["target"][0]
     if target == "SKU":
         st.session_state.scanned_sku = barcode
     elif target == "PART_NUMBER":
         st.session_state.scanned_part_number = barcode
-    
-    # Clear parameters
-    del st.query_params["barcode"]
-    del st.query_params["target"]
     st.session_state.page = "main"
+    st.experimental_set_query_params()  # Clear params
     st.rerun()
 
 # Initialize connection
@@ -219,9 +216,26 @@ if st.session_state.page == "main":
 
 elif st.session_state.page == "scanner":
     st.subheader(f"Scanning {st.session_state.scan_target}")
-    scanned = html5_qr_scanner()
-    if scanned is not None:
-        set_scanned_value(scanned)
+    # Render the scanner
+    html5_qr_scanner()
+    # JavaScript to set query params and reload after scan
+    st.markdown(
+        f"""
+        <script>
+        window.addEventListener('message', function(event) {{
+            if (event.data && event.data.type === 'streamlit:setComponentValue') {{
+                const barcode = event.data.value;
+                const target = '{st.session_state.scan_target}';
+                const url = new URL(window.location.href);
+                url.searchParams.set('barcode', barcode);
+                url.searchParams.set('target', target);
+                window.location.href = url.toString();
+            }}
+        }});
+        </script>
+        """,
+        unsafe_allow_html=True
+    )
     if st.button("Cancel", key="cancel_scan"):
         go_to_main()
     st.info("After scanning, the value will be automatically filled and you'll be redirected to the form. If scanning fails, you can cancel and try again.") 
