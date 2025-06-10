@@ -25,23 +25,6 @@ if 'scan_target' not in st.session_state:
 if 'last_scanned_value' not in st.session_state:
     st.session_state.last_scanned_value = None
 
-# Check URL parameters for scanned values
-query_params = st.query_params
-if "barcode" in query_params and "target" in query_params:
-    barcode = query_params["barcode"]
-    target = query_params["target"]
-    if isinstance(barcode, list):
-        barcode = barcode[0]
-    if isinstance(target, list):
-        target = target[0]
-    if target == "SKU":
-        st.session_state.scanned_sku = barcode
-    elif target == "PART_NUMBER":
-        st.session_state.scanned_part_number = barcode
-    st.session_state.page = "main"
-    st.query_params.clear()  # Clear params
-    st.rerun()
-
 # Initialize connection
 @st.cache_resource
 def init_connection():
@@ -220,24 +203,36 @@ if st.session_state.page == "main":
 
 elif st.session_state.page == "scanner":
     st.subheader(f"Scanning {st.session_state.scan_target}")
-    html5_qr_scanner()  # Only call for side effect, do not assign
+    # Hidden input to receive scanned value
+    scanned_value = st.text_input("Scanned Value", key="scanned_value_hidden", value="", type="hidden")
+    html5_qr_scanner()
     st.markdown(
         f'''
         <script>
         window.addEventListener('message', function(event) {{
             if (event.data && event.data.type === 'streamlit:setComponentValue') {{
                 const barcode = event.data.value;
-                const target = '{st.session_state.scan_target}';
-                const url = new URL(window.location.href);
-                url.searchParams.set('barcode', barcode);
-                url.searchParams.set('target', target);
-                window.location.href = url.toString();
+                // Set the hidden input value
+                const input = window.parent.document.querySelector('input[data-testid="stTextInput"][type="hidden"]');
+                if (input) {{
+                    input.value = barcode;
+                    input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                }}
             }}
         }});
         </script>
         ''',
         unsafe_allow_html=True
     )
+    # If the hidden input is set, update session state and go to main
+    if scanned_value:
+        if st.session_state.scan_target == "SKU":
+            st.session_state.scanned_sku = scanned_value
+        elif st.session_state.scan_target == "PART_NUMBER":
+            st.session_state.scanned_part_number = scanned_value
+        st.session_state.page = "main"
+        st.session_state.scanned_value_hidden = ""  # Reset hidden value
+        st.rerun()
     if st.button("Cancel", key="cancel_scan"):
         go_to_main()
     st.info("After scanning, the value will be automatically filled and you'll be redirected to the form. If scanning fails, you can cancel and try again.") 
