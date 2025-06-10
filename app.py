@@ -216,11 +216,9 @@ if st.session_state.page == "main":
 
 elif st.session_state.page == "scanner":
     st.subheader(f"Scanning {st.session_state.scan_target}")
-    # Render the scanner
-    html5_qr_scanner()
-    # JavaScript to set query params and reload after scan
+    html5_qr_scanner()  # Only call for side effect, do not assign
     st.markdown(
-        f"""
+        f'''
         <script>
         window.addEventListener('message', function(event) {{
             if (event.data && event.data.type === 'streamlit:setComponentValue') {{
@@ -233,7 +231,7 @@ elif st.session_state.page == "scanner":
             }}
         }});
         </script>
-        """,
+        ''',
         unsafe_allow_html=True
     )
     if st.button("Cancel", key="cancel_scan"):
