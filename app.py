@@ -7,6 +7,7 @@ import time
 import json
 import base64
 from barcode_scanner import html5_qr_scanner
+from streamlit_barcode_scanner import qr_scanner
 
 # Display app header
 st.title("Barcode Data Entry System")
@@ -204,57 +205,15 @@ if st.session_state.page == "main":
 elif st.session_state.page == "scanner":
     st.subheader(f"Scanning {st.session_state.scan_target}")
 
-    # Render the scanner (this should show the camera UI)
-    html5_qr_scanner()
+    scanned_value = qr_scanner()
 
-    # Hidden password input for value transfer
-    scanned_value = st.text_input(
-        "", key="scanned_value_hidden", value="", type="password", label_visibility="collapsed"
-    )
-    st.markdown(
-        """<style>
-        input[data-testid='stPasswordInput'] { height: 0px !important; width: 0px !important; border: none !important; padding: 0 !important; margin: 0 !important; }
-        </style>""",
-        unsafe_allow_html=True
-    )
-
-    # Aggressive debugging output
-    st.write("[DEBUG] scanned_value:", scanned_value)
-    st.write("[DEBUG] scan_target:", st.session_state.scan_target)
-    st.write("[DEBUG] session_state:", dict(st.session_state))
-
-    # JS to set the hidden input value
-    st.markdown(
-        f'''
-        <script>
-        window.addEventListener('message', function(event) {{
-            if (event.data && event.data.type === 'streamlit:setComponentValue') {{
-                const barcode = event.data.value;
-                console.log('[DEBUG] JS received barcode:', barcode);
-                const input = window.parent.document.querySelector('input[data-testid="stPasswordInput"]');
-                if (input) {{
-                    input.value = barcode;
-                    input.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                    console.log('[DEBUG] JS set hidden input value and dispatched event');
-                }} else {{
-                    console.log('[DEBUG] JS could not find hidden input');
-                }}
-            }}
-        }});
-        </script>
-        ''',
-        unsafe_allow_html=True
-    )
-
-    # If the hidden input is set, update session state and go to main
+    # As soon as a value is scanned, update session state and go to main page
     if scanned_value:
-        st.write("[DEBUG] Python detected scanned_value, updating session state and rerunning...")
         if st.session_state.scan_target == "SKU":
             st.session_state.scanned_sku = scanned_value
         elif st.session_state.scan_target == "PART_NUMBER":
             st.session_state.scanned_part_number = scanned_value
         st.session_state.page = "main"
-        st.session_state.scanned_value_hidden = ""  # Reset hidden value
         st.rerun()
 
     if st.button("Cancel", key="cancel_scan"):
