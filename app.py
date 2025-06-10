@@ -2,11 +2,6 @@ import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine, text
 from urllib.parse import quote_plus
-import cv2
-import numpy as np
-from pyzbar.pyzbar import decode
-from PIL import Image
-import io
 
 # Display app header
 st.title("Barcode Data Entry System")
@@ -95,48 +90,18 @@ def get_all_entries():
         st.error(f"Error getting entries: {str(e)}")
         return pd.DataFrame()
 
-def decode_barcode(image):
-    # Convert the image to grayscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    
-    # Decode barcodes
-    barcodes = decode(gray)
-    
-    if barcodes:
-        # Return the first barcode data
-        return barcodes[0].data.decode('utf-8')
-    return None
-
 # Main form
-st.subheader("Enter part information manually or scan barcodes")
+st.subheader("Enter part information")
 
 with st.form("data_entry_form"):
-    # SKU input with scan button
-    st.subheader("SKU")
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        sku = st.text_input("SKU (e.g., 999.000.932)", key="sku_input", value=st.session_state.scanned_sku)
-    with col2:
-        st.write("")
-        st.write("")
-        if st.form_submit_button("📷 Scan SKU"):
-            st.session_state.scanning = "SKU"
-            st.rerun()
+    # SKU input
+    sku = st.text_input("SKU (e.g., 999.000.932)", key="sku_input", value=st.session_state.scanned_sku)
     
     # Manufacturer input
     manufacturer = st.text_input("Manufacturer (e.g., Siemens, Schneider, Pils)", key="manufacturer_input")
     
-    # Manufacturer part number input with scan button
-    st.subheader("Manufacturer Part Number")
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        part_number = st.text_input("Part Number (e.g., L24DF3)", key="part_number_input", value=st.session_state.scanned_part_number)
-    with col2:
-        st.write("")
-        st.write("")
-        if st.form_submit_button("📷 Scan Part #"):
-            st.session_state.scanning = "PART_NUMBER"
-            st.rerun()
+    # Manufacturer part number input
+    part_number = st.text_input("Part Number (e.g., L24DF3)", key="part_number_input", value=st.session_state.scanned_part_number)
     
     # Submit button
     if st.form_submit_button("Submit"):
@@ -148,37 +113,6 @@ with st.form("data_entry_form"):
                 st.session_state.scanned_sku = ""
                 st.session_state.scanned_part_number = ""
                 st.rerun()
-
-# Handle barcode scanning
-if 'scanning' in st.session_state:
-    st.subheader(f"Scanning {st.session_state.scanning}")
-    
-    # Camera input
-    camera_input = st.camera_input("Take a picture of the barcode")
-    
-    if camera_input is not None:
-        # Convert the image to bytes
-        image_bytes = camera_input.getvalue()
-        
-        # Convert to numpy array
-        image = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
-        
-        # Decode barcode
-        barcode_data = decode_barcode(image)
-        
-        if barcode_data:
-            if st.session_state.scanning == "SKU":
-                st.session_state.scanned_sku = barcode_data
-            else:
-                st.session_state.scanned_part_number = barcode_data
-            st.session_state.scanning = None
-            st.rerun()
-        else:
-            st.error("No barcode detected. Please try again.")
-    
-    if st.button("Cancel"):
-        st.session_state.scanning = None
-        st.rerun()
 
 # Display entries
 df = get_all_entries()
