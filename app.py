@@ -26,16 +26,20 @@ if 'last_scanned_value' not in st.session_state:
     st.session_state.last_scanned_value = None
 
 # Check URL parameters for scanned values
-query_params = st.experimental_get_query_params()
+query_params = st.query_params
 if "barcode" in query_params and "target" in query_params:
-    barcode = query_params["barcode"][0]
-    target = query_params["target"][0]
+    barcode = query_params["barcode"]
+    target = query_params["target"]
+    if isinstance(barcode, list):
+        barcode = barcode[0]
+    if isinstance(target, list):
+        target = target[0]
     if target == "SKU":
         st.session_state.scanned_sku = barcode
     elif target == "PART_NUMBER":
         st.session_state.scanned_part_number = barcode
     st.session_state.page = "main"
-    st.experimental_set_query_params()  # Clear params
+    st.query_params.clear()  # Clear params
     st.rerun()
 
 # Initialize connection
