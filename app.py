@@ -203,8 +203,14 @@ if st.session_state.page == "main":
 
 elif st.session_state.page == "scanner":
     st.subheader(f"Scanning {st.session_state.scan_target}")
-    # Hidden input to receive scanned value
-    scanned_value = st.text_input("Scanned Value", key="scanned_value_hidden", value="", type="hidden")
+    # Use password type and hide with CSS
+    scanned_value = st.text_input("", key="scanned_value_hidden", value="", type="password", label_visibility="collapsed")
+    st.markdown(
+        """<style>
+        input[data-testid='stPasswordInput'] { height: 0px !important; width: 0px !important; border: none !important; padding: 0 !important; margin: 0 !important; }
+        </style>""",
+        unsafe_allow_html=True
+    )
     html5_qr_scanner()
     st.markdown(
         f'''
@@ -213,7 +219,7 @@ elif st.session_state.page == "scanner":
             if (event.data && event.data.type === 'streamlit:setComponentValue') {{
                 const barcode = event.data.value;
                 // Set the hidden input value
-                const input = window.parent.document.querySelector('input[data-testid="stTextInput"][type="hidden"]');
+                const input = window.parent.document.querySelector('input[data-testid="stPasswordInput"]');
                 if (input) {{
                     input.value = barcode;
                     input.dispatchEvent(new Event('input', {{ bubbles: true }}));
