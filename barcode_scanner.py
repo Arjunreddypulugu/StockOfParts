@@ -45,9 +45,7 @@ def html5_qr_scanner():
             });
         </script>
         """,
-        height=400,
-        key="html5_qr_scanner",
-        default=None
+        height=400
     )
 
 def scan_barcode():
